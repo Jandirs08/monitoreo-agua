@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Monitoreo QA/QC de campo - Control de calidad de parámetros de agua">
+    <meta name="description" content="Monitoreo QA/QC de campo - Control de calidad de parametros de agua">
     <meta name="theme-color" content="#00A0DF">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>Monitoreo QA/QC — OEFA</title>
+    <title>Monitoreo QA/QC - OEFA</title>
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/svg+xml" href="icons/icon.svg">
     <link rel="apple-touch-icon" href="icons/icon-192.png">
@@ -16,7 +16,6 @@
 <body>
 
 <div class="app-shell">
-    <!-- ===== HEADER ===== -->
     <header class="app-header" role="banner">
         <div class="header-brand">
             <div class="header-icon" aria-hidden="true">
@@ -33,11 +32,10 @@
         </div>
     </header>
 
-    <!-- ===== FORMULARIO (Bloque superior) ===== -->
     <section class="card card-form" aria-labelledby="formTitle">
         <div class="card-header">
             <h2 id="formTitle" class="card-title">
-                <span class="card-icon" aria-hidden="true">📋</span>
+                <span class="card-icon" aria-hidden="true">&#128203;</span>
                 Registro de Datos
             </h2>
         </div>
@@ -45,17 +43,17 @@
         <form id="qaqcForm" autocomplete="off" novalidate>
             <div class="form-grid">
                 <div class="input-group input-group--full">
-                    <label for="parametro">Parámetro a evaluar</label>
+                    <label for="parametro">Parametro a evaluar</label>
                     <div class="select-wrapper">
                         <select id="parametro" required aria-required="true">
-                            <option value="" disabled selected>Selecciona un parámetro...</option>
+                            <option value="" disabled selected>Selecciona un parametro...</option>
                             <option value="pH">pH (Unid. de pH)</option>
-                            <option value="CE">Conductividad Eléctrica (CE)</option>
-                            <option value="OD">Oxígeno Disuelto (OD)</option>
+                            <option value="CE">Conductividad Electrica (CE)</option>
+                            <option value="OD">Oxigeno Disuelto (OD)</option>
                             <option value="T">Temperatura (T)</option>
                             <option value="Turbidez">Turbidez</option>
                         </select>
-                        <span class="select-arrow" aria-hidden="true">▾</span>
+                        <span class="select-arrow" aria-hidden="true">&#9662;</span>
                     </div>
                 </div>
 
@@ -72,16 +70,14 @@
 
             <div class="form-actions">
                 <button type="submit" class="btn btn-primary" id="btnCalcular">
-                    
                     Calcular y Guardar
                 </button>
                 <button type="reset" class="btn btn-ghost" id="btnLimpiar" title="Limpiar formulario" aria-label="Limpiar formulario">
-                    <span aria-hidden="true">🧹</span>
+                    <span aria-hidden="true">&#129533;</span>
                 </button>
             </div>
         </form>
 
-        <!-- Resultado -->
         <div id="resultadoBox" class="result-box hidden" role="alert" aria-live="assertive">
             <div id="resIcon" class="result-icon" aria-hidden="true"></div>
             <div class="result-content">
@@ -91,26 +87,24 @@
         </div>
     </section>
 
-    <!-- ===== HISTORIAL / TABLA (Bloque inferior) ===== -->
     <section class="card card-table" aria-labelledby="tableTitle">
         <div class="card-header card-header--between">
             <h2 id="tableTitle" class="card-title">
-                <span class="card-icon" aria-hidden="true">🗂️</span>
+                <span class="card-icon" aria-hidden="true">&#128450;</span>
                 Historial de Monitoreo
             </h2>
             <div class="table-controls">
-                <label for="pageSize" class="sr-only">Registros por página</label>
-                <select id="pageSize" class="select-mini" aria-label="Registros por página">
+                <label for="pageSize" class="sr-only">Registros por pagina</label>
+                <select id="pageSize" class="select-mini" aria-label="Registros por pagina">
                     <option value="5">5</option>
                     <option value="10" selected>10</option>
                     <option value="20">20</option>
                     <option value="100">100</option>
                 </select>
-                <span class="control-label">por página</span>
+                <span class="control-label">por pagina</span>
             </div>
         </div>
 
-        <!-- Filtros sutiles -->
         <div class="filter-bar" role="search" aria-label="Filtrar registros">
             <div class="filter-item">
                 <label for="filterFecha">Fecha</label>
@@ -124,8 +118,9 @@
                     <option value="NC">No Conforme</option>
                 </select>
             </div>
-            <button id="btnClearFilters" class="btn-clear-filter" title="Limpiar filtros" aria-label="Limpiar filtros">✕</button>
+            <button type="button" id="btnClearFilters" class="btn-clear-filter" title="Limpiar filtros" aria-label="Limpiar filtros">Limpiar</button>
         </div>
+        <div id="filterSummary" class="filter-summary" aria-live="polite"></div>
 
         <div class="table-wrapper" role="region" aria-label="Tabla de historial de mediciones" tabindex="0">
             <table aria-describedby="tableTitle">
@@ -133,75 +128,68 @@
                     <tr>
                         <th scope="col" class="col-num">#</th>
                         <th scope="col" class="col-fecha">Fecha</th>
-                        <th scope="col">Parámetro</th>
+                        <th scope="col">Parametro</th>
                         <th scope="col" class="col-data">D1</th>
                         <th scope="col" class="col-data">D2</th>
                         <th scope="col" class="col-estado">Estado</th>
                         <th scope="col" class="col-actions"><span class="sr-only">Acciones</span></th>
                     </tr>
                 </thead>
-                <tbody id="tablaBody">
-                </tbody>
+                <tbody id="tablaBody"></tbody>
             </table>
             <div id="emptyState" class="empty-state hidden">
-                <div class="empty-icon" aria-hidden="true">💧</div>
-                <p>No hay registros aún</p>
-                <p class="empty-sub">Los datos calculados aparecerán aquí</p>
+                <div class="empty-icon" aria-hidden="true">&#128167;</div>
+                <p id="emptyTitle">No hay registros aun</p>
+                <p id="emptySub" class="empty-sub">Los datos calculados apareceran aqui</p>
             </div>
         </div>
 
-        <!-- Paginación -->
-        <div id="paginacion" class="pagination hidden" role="navigation" aria-label="Paginación de la tabla">
-            <button id="btnPrev" class="btn btn-page" aria-label="Página anterior" disabled>
-                ‹ Anterior
+        <div id="paginacion" class="pagination hidden" role="navigation" aria-label="Paginacion de la tabla">
+            <button id="btnPrev" class="btn btn-page" aria-label="Pagina anterior" disabled>
+                &#8249; Anterior
             </button>
             <span id="pageInfo" class="page-info" aria-live="polite"></span>
-            <button id="btnNext" class="btn btn-page" aria-label="Página siguiente">
-                Siguiente ›
+            <button id="btnNext" class="btn btn-page" aria-label="Pagina siguiente">
+                Siguiente &#8250;
             </button>
         </div>
 
-        <!-- Acciones de tabla -->
         <div class="table-actions">
             <button id="btnExcel" class="btn btn-success" aria-label="Descargar historial como Excel">
-                <span aria-hidden="true">📊</span> Descargar Excel (.xls)
+                <span aria-hidden="true">&#128202;</span> Descargar Excel (.xls)
             </button>
             <button id="btnBorrar" class="btn btn-outline-danger" aria-label="Vaciar todo el historial">
-                <span aria-hidden="true">🗑️</span> Vaciar Historial
+                <span aria-hidden="true">&#128465;</span> Vaciar Historial
             </button>
         </div>
     </section>
 
-    <!-- ===== FOOTER ===== -->
     <footer class="app-footer" role="contentinfo">
         <p>Monitoreo QA/QC de Campo <span class="footer-sep"></span></p>
     </footer>
 </div>
 
-<!-- ===== MODAL: Confirmar Vaciar ===== -->
 <div id="modalOverlay" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
     <div class="modal-dialog">
-        <div class="modal-icon" aria-hidden="true">⚠️</div>
-        <h3 id="modalTitle" class="modal-title">¿Vaciar todo el historial?</h3>
-        <p class="modal-text">Esta acción eliminará todos los registros guardados. No se puede deshacer.</p>
+        <div class="modal-icon" aria-hidden="true">&#9888;</div>
+        <h3 id="modalTitle" class="modal-title">Vaciar todo el historial?</h3>
+        <p class="modal-text">Esta accion eliminara todos los registros guardados. No se puede deshacer.</p>
         <div class="modal-actions">
             <button id="modalCancel" class="btn btn-ghost-modal">Cancelar</button>
-            <button id="modalConfirm" class="btn btn-danger-modal">Sí, vaciar</button>
+            <button id="modalConfirm" class="btn btn-danger-modal">Si, vaciar</button>
         </div>
     </div>
 </div>
 
-<!-- ===== TOAST CONTAINER ===== -->
 <div id="toastContainer" class="toast-container" aria-live="polite" aria-relevant="additions"></div>
 
 <script src="app.js"></script>
 <script>
-    // Registro del Service Worker
-    if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-            navigator.serviceWorker.register('sw.js')
-                .then(reg => console.log('SW registrado:', reg.scope))
-                .catch(err => console.log('SW error:', err));
+    if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+            navigator.serviceWorker.register("sw.js")
+                .then((reg) => console.log("SW registrado:", reg.scope))
+                .catch((err) => console.log("SW error:", err));
         });
     }
 </script>
