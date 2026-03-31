@@ -277,11 +277,11 @@ document.addEventListener("DOMContentLoaded", () => {
       "<html xmlns:x='urn:schemas-microsoft-com:office:excel'><head><meta charset='utf-8'></head><body><table border='1'>" +
       "<tr>" +
       "<th style='background:" + headerBg + "; color:white; font-weight:bold;'>N</th>" +
-      "<th style='background:" + headerBg + "; color:white; font-weight:bold;'>FECHA</th>" +
       "<th style='background:" + headerBg + "; color:white; font-weight:bold;'>PARAMETRO</th>" +
       "<th style='background:" + headerBg + "; color:white; font-weight:bold;'>D1</th>" +
       "<th style='background:" + headerBg + "; color:white; font-weight:bold;'>D2</th>" +
       "<th style='background:" + headerBg + "; color:white; font-weight:bold;'>ESTADO</th>" +
+      "<th style='background:" + headerBg + "; color:white; font-weight:bold;'>FECHA</th>" +
       "<th style='background:" + headerBg + "; color:white; font-weight:bold;'>ERROR/RPD</th>" +
       "</tr>";
 
@@ -290,11 +290,11 @@ document.addEventListener("DOMContentLoaded", () => {
       tablaHtml +=
         "<tr>" +
         "<td>" + (index + 1) + "</td>" +
-        "<td>" + (record.fecha || "") + "</td>" +
         "<td>" + record.param + "</td>" +
         "<td>" + record.d1 + "</td>" +
         "<td>" + record.d2 + "</td>" +
         "<td style='color:" + color + "; font-weight:bold;'>" + record.res + "</td>" +
+        "<td>" + (record.fecha || "") + "</td>" +
         "<td>" + record.valor + "</td>" +
         "</tr>";
     });
@@ -600,11 +600,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
     return `
       <td class="cell-num" data-label="#">${index}</td>
-      <td class="cell-fecha" data-label="Fecha">${record.fecha || "-"}</td>
       <td class="cell-param" data-label="Parametro">${record.param}</td>
       <td class="cell-data" data-label="D1">${record.d1}</td>
       <td class="cell-data" data-label="D2">${record.d2}</td>
       <td class="cell-estado" data-label="Estado"><span class="${badgeClass}" title="${badgeLabel}" aria-label="${badgeLabel}">${badgeShort}</span></td>
+      <td class="cell-fecha" data-label="Fecha">${record.fecha || "-"}</td>
       <td class="cell-actions" data-label="Accion"><button type="button" class="btn-delete-row" title="Eliminar registro" aria-label="Eliminar registro ${index}">Eliminar</button></td>
     `;
   }
