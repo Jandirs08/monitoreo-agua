@@ -278,22 +278,23 @@ document.addEventListener("DOMContentLoaded", () => {
       "<tr>" +
       "<th style='background:" + headerBg + "; color:white; font-weight:bold;'>N</th>" +
       "<th style='background:" + headerBg + "; color:white; font-weight:bold;'>PARAMETRO</th>" +
+      "<th style='background:" + headerBg + "; color:white; font-weight:bold;'>ESTADO</th>" +
       "<th style='background:" + headerBg + "; color:white; font-weight:bold;'>D1</th>" +
       "<th style='background:" + headerBg + "; color:white; font-weight:bold;'>D2</th>" +
-      "<th style='background:" + headerBg + "; color:white; font-weight:bold;'>ESTADO</th>" +
       "<th style='background:" + headerBg + "; color:white; font-weight:bold;'>FECHA</th>" +
       "<th style='background:" + headerBg + "; color:white; font-weight:bold;'>ERROR/RPD</th>" +
       "</tr>";
 
     hist.forEach((record, index) => {
       const color = record.res === "C" ? "#38a169" : "#e53e3e";
+      const estado = record.res === "C" ? "Conforme" : "No conforme";
       tablaHtml +=
         "<tr>" +
         "<td>" + (index + 1) + "</td>" +
-        "<td>" + record.param + "</td>" +
+        "<td>" + formatParamLabel(record.param) + "</td>" +
+        "<td style='color:" + color + "; font-weight:bold;'>" + estado + "</td>" +
         "<td>" + record.d1 + "</td>" +
         "<td>" + record.d2 + "</td>" +
-        "<td style='color:" + color + "; font-weight:bold;'>" + record.res + "</td>" +
         "<td>" + (record.fecha || "") + "</td>" +
         "<td>" + record.valor + "</td>" +
         "</tr>";
@@ -596,17 +597,29 @@ document.addEventListener("DOMContentLoaded", () => {
   function buildRowMarkup(record, index) {
     const badgeClass = record.res === "C" ? "badge badge-c" : "badge badge-nc";
     const badgeLabel = record.res === "C" ? "Conforme" : "No conforme";
-    const badgeShort = record.res === "C" ? "C" : "NC";
+    const paramLabel = formatParamLabel(record.param);
 
     return `
       <td class="cell-num" data-label="#">${index}</td>
-      <td class="cell-param" data-label="Parametro">${record.param}</td>
+      <td class="cell-param" data-label="Parametro" title="${record.param}">${paramLabel}</td>
+      <td class="cell-estado" data-label="Estado"><span class="${badgeClass}" title="${badgeLabel}" aria-label="${badgeLabel}"><span class="badge-dot" aria-hidden="true"></span>${badgeLabel}</span></td>
       <td class="cell-data" data-label="D1">${record.d1}</td>
       <td class="cell-data" data-label="D2">${record.d2}</td>
-      <td class="cell-estado" data-label="Estado"><span class="${badgeClass}" title="${badgeLabel}" aria-label="${badgeLabel}">${badgeShort}</span></td>
       <td class="cell-fecha" data-label="Fecha">${record.fecha || "-"}</td>
       <td class="cell-actions" data-label="Accion"><button type="button" class="btn-delete-row" title="Eliminar registro" aria-label="Eliminar registro ${index}">Eliminar</button></td>
     `;
+  }
+
+  function formatParamLabel(param) {
+    const labels = {
+      pH: "pH",
+      CE: "CE",
+      OD: "OD",
+      T: "Temp.",
+      Turbidez: "Turb.",
+    };
+
+    return labels[param] || param;
   }
 
   function updatePaginationState(totalItems) {
