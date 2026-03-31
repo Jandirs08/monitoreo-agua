@@ -59,12 +59,12 @@
 
                 <div class="input-group">
                     <label for="dato1">Dato Original (D1)</label>
-                    <input type="number" id="dato1" step="any" placeholder="Ej: 7.6" required aria-required="true" inputmode="decimal">
+                    <input type="number" id="dato1" step="any" placeholder="Ej: 7.6" required aria-required="true" inputmode="decimal" enterkeyhint="next">
                 </div>
 
                 <div class="input-group">
                     <label for="dato2">Dato Duplicado (D2)</label>
-                    <input type="number" id="dato2" step="any" placeholder="Ej: 7.5" required aria-required="true" inputmode="decimal">
+                    <input type="number" id="dato2" step="any" placeholder="Ej: 7.5" required aria-required="true" inputmode="decimal" enterkeyhint="done">
                 </div>
             </div>
 
@@ -78,7 +78,7 @@
             </div>
         </form>
 
-        <div id="resultadoBox" class="result-box hidden" role="alert" aria-live="assertive">
+        <div id="resultadoBox" class="result-box hidden" role="status" aria-live="polite">
             <div id="resIcon" class="result-icon" aria-hidden="true"></div>
             <div class="result-content">
                 <div id="resTitle" class="result-title"></div>
@@ -93,30 +93,29 @@
                 <span class="card-icon" aria-hidden="true">&#128450;</span>
                 Historial de Monitoreo
             </h2>
-            <div class="table-controls">
-                <label for="pageSize" class="sr-only">Registros por pagina</label>
-                <select id="pageSize" class="select-mini" aria-label="Registros por pagina">
-                    <option value="5">5</option>
-                    <option value="10" selected>10</option>
-                    <option value="20">20</option>
-                    <option value="100">100</option>
-                </select>
-                <span class="control-label">por pagina</span>
+            <div class="table-controls" aria-labelledby="pageSizeLabel">
+                <span id="pageSizeLabel" class="control-label">Registros por pagina</span>
+                <div class="segmented-control segmented-control--compact" role="group" aria-labelledby="pageSizeLabel">
+                    <button type="button" class="segment-btn" data-page-size="5" aria-pressed="false">5</button>
+                    <button type="button" class="segment-btn is-active" data-page-size="10" aria-pressed="true">10</button>
+                    <button type="button" class="segment-btn" data-page-size="20" aria-pressed="false">20</button>
+                    <button type="button" class="segment-btn" data-page-size="100" aria-pressed="false">100</button>
+                </div>
             </div>
         </div>
 
         <div class="filter-bar" role="search" aria-label="Filtrar registros">
             <div class="filter-item">
                 <label for="filterFecha">Fecha</label>
-                <input type="date" id="filterFecha" class="filter-input" aria-label="Filtrar por fecha">
+                <input type="date" id="filterFecha" class="filter-input" aria-label="Filtrar por fecha" aria-describedby="filterSummary">
             </div>
-            <div class="filter-item">
-                <label for="filterEstado">Estado</label>
-                <select id="filterEstado" class="filter-input" aria-label="Filtrar por estado">
-                    <option value="">Todos</option>
-                    <option value="C">Conforme</option>
-                    <option value="NC">No Conforme</option>
-                </select>
+            <div class="filter-item filter-item--status">
+                <span id="filterEstadoLabel" class="filter-item-label">Estado</span>
+                <div id="filterEstadoGroup" class="segmented-control segmented-control--compact" role="group" aria-labelledby="filterEstadoLabel" aria-describedby="filterSummary">
+                    <button type="button" class="segment-btn is-active" data-filter-estado="" aria-pressed="true">Todos</button>
+                    <button type="button" class="segment-btn" data-filter-estado="C" aria-pressed="false">Conforme</button>
+                    <button type="button" class="segment-btn" data-filter-estado="NC" aria-pressed="false">No conforme</button>
+                </div>
             </div>
             <button type="button" id="btnClearFilters" class="btn-clear-filter" title="Limpiar filtros" aria-label="Limpiar filtros">Limpiar</button>
         </div>
@@ -186,9 +185,36 @@
 <script src="app.js"></script>
 <script>
     if ("serviceWorker" in navigator) {
+        let refreshing = false;
+
+        navigator.serviceWorker.addEventListener("controllerchange", () => {
+            if (refreshing) return;
+            refreshing = true;
+            window.location.reload();
+        });
+
         window.addEventListener("load", () => {
-            navigator.serviceWorker.register("sw.js")
-                .then((reg) => console.log("SW registrado:", reg.scope))
+            navigator.serviceWorker.register("sw.js", { updateViaCache: "none" })
+                .then((reg) => {
+                    reg.update();
+
+                    if (reg.waiting) {
+                        reg.waiting.postMessage({ type: "SKIP_WAITING" });
+                    }
+
+                    reg.addEventListener("updatefound", () => {
+                        const installing = reg.installing;
+                        if (!installing) return;
+
+                        installing.addEventListener("statechange", () => {
+                            if (installing.state === "installed" && reg.waiting) {
+                                reg.waiting.postMessage({ type: "SKIP_WAITING" });
+                            }
+                        });
+                    });
+
+                    console.log("SW registrado:", reg.scope);
+                })
                 .catch((err) => console.log("SW error:", err));
         });
     }

@@ -1,7 +1,7 @@
 document.addEventListener("DOMContentLoaded", () => {
   let currentPage = 1;
-  let pageSize = parseInt(document.getElementById("pageSize").value, 10) || 10;
-  let renderFrame = 0;
+  let pageSize = 10;
+  let statusFilter = "";
 
   const form = document.getElementById("qaqcForm");
   const resBox = document.getElementById("resultadoBox");
@@ -13,7 +13,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const emptyTitle = document.getElementById("emptyTitle");
   const emptySub = document.getElementById("emptySub");
   const tableEl = document.querySelector(".table-wrapper table");
-  const pageSizeSelect = document.getElementById("pageSize");
+  const pageSizeButtons = Array.from(document.querySelectorAll("[data-page-size]"));
   const btnPrev = document.getElementById("btnPrev");
   const btnNext = document.getElementById("btnNext");
   const pageInfo = document.getElementById("pageInfo");
@@ -26,10 +26,11 @@ document.addEventListener("DOMContentLoaded", () => {
   const modalCancel = document.getElementById("modalCancel");
   const modalConfirm = document.getElementById("modalConfirm");
   const filterFecha = document.getElementById("filterFecha");
-  const filterEstado = document.getElementById("filterEstado");
+  const filterEstadoButtons = Array.from(document.querySelectorAll("[data-filter-estado]"));
   const btnClearFilters = document.getElementById("btnClearFilters");
   const filterSummary = document.getElementById("filterSummary");
   const toastContainer = document.getElementById("toastContainer");
+  const isCoarsePointer = window.matchMedia("(pointer: coarse)").matches;
 
   const STORAGE_KEY = "qaqc_modern";
   const DISPLAY_DATE_FORMATTER = new Intl.DateTimeFormat("es-PE", {
@@ -46,18 +47,38 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   hydrateHistorial();
+  initializeSegmentedControls();
   cargarTabla();
 
-  [filterFecha, filterEstado].forEach((control) => {
-    control.addEventListener("input", () => scheduleTableRender(true));
-    control.addEventListener("change", () => scheduleTableRender(true));
+  filterFecha.addEventListener("input", () => {
+    currentPage = 1;
+    cargarTabla();
+  });
+
+  filterFecha.addEventListener("change", () => {
+    currentPage = 1;
+    cargarTabla();
+  });
+
+  filterEstadoButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const nextValue = button.dataset.filterEstado || "";
+      if (statusFilter === nextValue) return;
+
+      statusFilter = nextValue;
+      syncSegmentedState(filterEstadoButtons, statusFilter, "filterEstado");
+      currentPage = 1;
+      cargarTabla();
+    });
   });
 
   btnClearFilters.addEventListener("click", () => {
-    if (!filterFecha.value && !filterEstado.value) return;
+    if (!filterFecha.value && !statusFilter) return;
     filterFecha.value = "";
-    filterEstado.value = "";
-    scheduleTableRender(true);
+    statusFilter = "";
+    syncSegmentedState(filterEstadoButtons, statusFilter, "filterEstado");
+    currentPage = 1;
+    cargarTabla();
   });
 
   inputD1.addEventListener("keydown", (event) => {
@@ -165,7 +186,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     inputD1.value = "";
     inputD2.value = "";
-    inputD1.focus();
+    if (!isCoarsePointer) {
+      inputD1.focus();
+    }
   });
 
   btnLimpiar.addEventListener("click", () => {
@@ -173,10 +196,16 @@ document.addEventListener("DOMContentLoaded", () => {
     clearValidation();
   });
 
-  pageSizeSelect.addEventListener("change", () => {
-    pageSize = parseInt(pageSizeSelect.value, 10) || 10;
-    currentPage = 1;
-    cargarTabla();
+  pageSizeButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const nextPageSize = parseInt(button.dataset.pageSize || "", 10);
+      if (!nextPageSize || nextPageSize === pageSize) return;
+
+      pageSize = nextPageSize;
+      syncSegmentedState(pageSizeButtons, String(pageSize), "pageSize");
+      currentPage = 1;
+      cargarTabla();
+    });
   });
 
   btnPrev.addEventListener("click", () => {
@@ -285,6 +314,19 @@ document.addEventListener("DOMContentLoaded", () => {
     saveHistorial(hist);
   }
 
+  function initializeSegmentedControls() {
+    const activePageSizeButton =
+      pageSizeButtons.find((button) => button.classList.contains("is-active")) ||
+      pageSizeButtons[0];
+    const activePageSize = parseInt(activePageSizeButton?.dataset.pageSize || "10", 10);
+
+    pageSize = activePageSize || 10;
+    syncSegmentedState(pageSizeButtons, String(pageSize), "pageSize");
+    syncSegmentedState(filterEstadoButtons, statusFilter, "filterEstado");
+    setupSegmentedKeyboard(pageSizeButtons);
+    setupSegmentedKeyboard(filterEstadoButtons);
+  }
+
   function buildDatePayload(date) {
     return {
       fecha: DISPLAY_DATE_FORMATTER.format(date),
@@ -347,13 +389,33 @@ document.addEventListener("DOMContentLoaded", () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   }
 
-  function scheduleTableRender(resetPage) {
-    if (resetPage) currentPage = 1;
-    if (renderFrame) cancelAnimationFrame(renderFrame);
+  function syncSegmentedState(buttons, selectedValue, type) {
+    buttons.forEach((button) => {
+      const buttonValue =
+        type === "pageSize"
+          ? button.dataset.pageSize || ""
+          : button.dataset.filterEstado || "";
+      const isActive = buttonValue === selectedValue;
 
-    renderFrame = requestAnimationFrame(() => {
-      renderFrame = 0;
-      cargarTabla();
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-pressed", String(isActive));
+      button.tabIndex = isActive ? 0 : -1;
+    });
+  }
+
+  function setupSegmentedKeyboard(buttons) {
+    buttons.forEach((button, index) => {
+      button.addEventListener("keydown", (event) => {
+        if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+
+        event.preventDefault();
+        const direction = event.key === "ArrowRight" ? 1 : -1;
+        const nextIndex = (index + direction + buttons.length) % buttons.length;
+        const nextButton = buttons[nextIndex];
+
+        nextButton.focus();
+        nextButton.click();
+      });
     });
   }
 
@@ -387,7 +449,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function applyFilters(hist) {
     const fecha = filterFecha.value;
-    const estado = filterEstado.value;
+    const estado = statusFilter;
 
     return hist.filter((record) => {
       const matchFecha = !fecha || record.fechaKey === fecha;
@@ -403,8 +465,8 @@ document.addEventListener("DOMContentLoaded", () => {
       parts.push("Fecha: " + formatFilterDate(filterFecha.value));
     }
 
-    if (filterEstado.value) {
-      parts.push("Estado: " + (filterEstado.value === "C" ? "Conforme" : "No Conforme"));
+    if (statusFilter) {
+      parts.push("Estado: " + (statusFilter === "C" ? "Conforme" : "No conforme"));
     }
 
     if (parts.length === 0) {
@@ -444,7 +506,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function buildRowMarkup(record, index) {
     const badgeClass = record.res === "C" ? "badge badge-c" : "badge badge-nc";
-    const badgeLabel = record.res === "C" ? "Conforme" : "No Conforme";
+    const badgeLabel = record.res === "C" ? "Conforme" : "No conforme";
 
     return `
       <td class="cell-num" data-label="#">${index}</td>
@@ -452,7 +514,7 @@ document.addEventListener("DOMContentLoaded", () => {
       <td class="cell-param" data-label="Parametro">${record.param}</td>
       <td class="cell-data" data-label="D1">${record.d1}</td>
       <td class="cell-data" data-label="D2">${record.d2}</td>
-      <td class="cell-estado" data-label="Estado"><span class="${badgeClass}" title="${badgeLabel}">${record.res}</span></td>
+      <td class="cell-estado" data-label="Estado"><span class="${badgeClass}" title="${badgeLabel}">${badgeLabel}</span></td>
       <td class="cell-actions" data-label="Accion"><button type="button" class="btn-delete-row" title="Eliminar registro" aria-label="Eliminar registro ${index}">Eliminar</button></td>
     `;
   }
