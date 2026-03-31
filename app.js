@@ -2,6 +2,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let currentPage = 1;
   let pageSize = parseInt(document.getElementById("pageSize").value, 10) || 10;
   let statusFilter = "";
+  let lastFilterSignature = "";
 
   const form = document.getElementById("qaqcForm");
   const resBox = document.getElementById("resultadoBox");
@@ -48,21 +49,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
   hydrateHistorial();
   initializeFilterControls();
-  setupInputFocus(inputD1);
-  setupInputFocus(inputD2);
   syncDecimalInput(inputD1);
   syncDecimalInput(inputD2);
   cargarTabla();
 
-  filterFecha.addEventListener("input", () => {
-    currentPage = 1;
-    cargarTabla();
-  });
+  const handleFilterFechaChange = () => {
+    applyFilterChange();
+  };
 
-  filterFecha.addEventListener("change", () => {
-    currentPage = 1;
-    cargarTabla();
-  });
+  filterFecha.addEventListener("input", handleFilterFechaChange);
+  filterFecha.addEventListener("change", handleFilterFechaChange);
 
   filterEstadoButtons.forEach((button) => {
     button.addEventListener("click", () => {
@@ -71,8 +67,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       statusFilter = nextValue;
       syncSegmentedState(filterEstadoButtons, statusFilter, "filterEstado");
-      currentPage = 1;
-      cargarTabla();
+      applyFilterChange();
     });
   });
 
@@ -81,8 +76,7 @@ document.addEventListener("DOMContentLoaded", () => {
     filterFecha.value = "";
     statusFilter = "";
     syncSegmentedState(filterEstadoButtons, statusFilter, "filterEstado");
-    currentPage = 1;
-    cargarTabla();
+    applyFilterChange();
   });
 
   inputD1.addEventListener("keydown", (event) => {
@@ -183,7 +177,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const hist = getHistorial();
     hist.unshift(registro);
-    saveHistorial(hist);
+    if (!saveHistorial(hist)) {
+      return;
+    }
 
     currentPage = 1;
     cargarTabla();
@@ -252,7 +248,12 @@ document.addEventListener("DOMContentLoaded", () => {
   modalCancel.addEventListener("click", closeModal);
 
   modalConfirm.addEventListener("click", () => {
-    localStorage.removeItem(STORAGE_KEY);
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      showToast("No se pudo vaciar el historial", "error");
+      return;
+    }
     resBox.classList.add("hidden");
     currentPage = 1;
     cargarTabla();
@@ -312,7 +313,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function hydrateHistorial() {
     const hist = getHistorial();
-    saveHistorial(hist);
+    saveHistorial(hist, { silent: true });
   }
 
   function initializeFilterControls() {
@@ -320,22 +321,12 @@ document.addEventListener("DOMContentLoaded", () => {
     setupSegmentedKeyboard(filterEstadoButtons);
   }
 
-  function setupInputFocus(input) {
-    input.addEventListener("pointerup", () => {
-      if (document.activeElement === input) return;
-
-      window.requestAnimationFrame(() => {
-        input.focus();
-        const length = input.value.length;
-        if (typeof input.setSelectionRange === "function") {
-          input.setSelectionRange(length, length);
-        }
-      });
-    });
-  }
-
   function parseDecimal(value) {
-    return parseFloat(String(value).replace(",", ".").trim());
+    if (!isValidDecimalInput(value)) {
+      return Number.NaN;
+    }
+
+    return Number(normalizeDecimalString(value));
   }
 
   function buildDatePayload(date) {
@@ -376,12 +367,21 @@ document.addEventListener("DOMContentLoaded", () => {
     const createdAt =
       safeRecord.createdAt ||
       (fechaKey ? fechaKey + "T00:00:00.000Z" : "");
+    const d1 = Number(safeRecord.d1);
+    const d2 = Number(safeRecord.d2);
+    const valor = Number(safeRecord.valor);
 
     return {
       ...safeRecord,
+      id: typeof safeRecord.id === "string" ? safeRecord.id : "",
       fecha: safeRecord.fecha || "",
       fechaKey,
       createdAt,
+      param: typeof safeRecord.param === "string" ? safeRecord.param : "",
+      d1,
+      d2,
+      res: safeRecord.res === "C" || safeRecord.res === "NC" ? safeRecord.res : "",
+      valor: Number.isFinite(valor) ? valor.toFixed(2) : "",
     };
   }
 
@@ -390,14 +390,49 @@ document.addEventListener("DOMContentLoaded", () => {
       const stored = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
       if (!Array.isArray(stored)) return [];
 
-      return stored.map((record) => normalizeRecord(record));
+      return stored.map((record) => normalizeRecord(record)).filter((record) => isPersistableRecord(record));
     } catch {
       return [];
     }
   }
 
-  function saveHistorial(data) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  function saveHistorial(data, { silent = false } = {}) {
+    const sanitized = Array.isArray(data)
+      ? data.map((record) => normalizeRecord(record)).filter((record) => isPersistableRecord(record))
+      : [];
+
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitized));
+      return true;
+    } catch (error) {
+      console.error("No se pudo guardar el historial", error);
+      if (!silent) {
+        showToast("No se pudo guardar el historial", "error");
+      }
+      return false;
+    }
+  }
+
+  function normalizeDecimalString(value) {
+    return String(value).trim().replace(",", ".");
+  }
+
+  function isValidDecimalInput(value) {
+    const trimmed = String(value).trim();
+    if (!trimmed) return false;
+    return /^-?(?:\d+(?:[.,]\d+)?|[.,]\d+)$/.test(trimmed);
+  }
+
+  function getFilterSignature() {
+    return filterFecha.value + "|" + statusFilter;
+  }
+
+  function applyFilterChange() {
+    const nextSignature = getFilterSignature();
+    if (nextSignature === lastFilterSignature) return;
+
+    currentPage = 1;
+    cargarTabla();
   }
 
   function syncSegmentedState(buttons, selectedValue, type) {
@@ -429,11 +464,33 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function syncDecimalInput(input) {
     input.addEventListener("input", () => {
-      const cleaned = input.value.replace(/[^0-9,.\-]/g, "");
-      if (cleaned !== input.value) {
-        input.value = cleaned;
+      const sanitized = sanitizeDecimalInput(input.value);
+      if (sanitized !== input.value) {
+        input.value = sanitized;
       }
     });
+  }
+
+  function sanitizeDecimalInput(value) {
+    const trimmed = String(value).replace(/\s+/g, "");
+    const isNegative = trimmed.startsWith("-");
+    const body = trimmed.replace(/-/g, "");
+    let hasSeparator = false;
+    let result = "";
+
+    for (const char of body) {
+      if (/\d/.test(char)) {
+        result += char;
+        continue;
+      }
+
+      if ((char === "." || char === ",") && !hasSeparator) {
+        hasSeparator = true;
+        result += char;
+      }
+    }
+
+    return (isNegative ? "-" : "") + result;
   }
 
   function clearValidation() {
@@ -510,6 +567,21 @@ document.addEventListener("DOMContentLoaded", () => {
     return Math.max(1, Math.ceil(totalItems / pageSize));
   }
 
+  function isPersistableRecord(record) {
+    return Boolean(
+      record &&
+      typeof record.id === "string" &&
+      record.id &&
+      typeof record.param === "string" &&
+      record.param &&
+      Number.isFinite(record.d1) &&
+      Number.isFinite(record.d2) &&
+      (record.res === "C" || record.res === "NC") &&
+      typeof record.valor === "string" &&
+      record.fechaKey
+    );
+  }
+
   function setEmptyState(mode) {
     if (mode === "filtered") {
       emptyTitle.textContent = "No hay coincidencias";
@@ -557,6 +629,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const filtered = applyFilters(hist);
     const totalPages = getTotalPages(filtered.length);
 
+    lastFilterSignature = getFilterSignature();
     currentPage = Math.min(Math.max(currentPage, 1), totalPages);
     updateFilterSummary(filtered.length, hist.length);
 
@@ -599,7 +672,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function deleteRecord(id) {
     const hist = getHistorial().filter((record) => record.id !== id);
-    saveHistorial(hist);
+    if (!saveHistorial(hist)) {
+      cargarTabla();
+      return;
+    }
     cargarTabla();
     showToast("Registro eliminado", "info");
   }

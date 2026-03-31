@@ -18,7 +18,6 @@ self.addEventListener("install", (event) => {
       return cache.addAll(ASSETS);
     })
   );
-  self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
@@ -35,12 +34,6 @@ self.addEventListener("activate", (event) => {
     )
   );
   self.clients.claim();
-});
-
-self.addEventListener("message", (event) => {
-  if (event.data?.type === "SKIP_WAITING") {
-    self.skipWaiting();
-  }
 });
 
 async function cacheResponse(request, response) {
