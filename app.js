@@ -1,6 +1,6 @@
 document.addEventListener("DOMContentLoaded", () => {
   let currentPage = 1;
-  let pageSize = 10;
+  let pageSize = parseInt(document.getElementById("pageSize").value, 10) || 10;
   let statusFilter = "";
 
   const form = document.getElementById("qaqcForm");
@@ -13,7 +13,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const emptyTitle = document.getElementById("emptyTitle");
   const emptySub = document.getElementById("emptySub");
   const tableEl = document.querySelector(".table-wrapper table");
-  const pageSizeButtons = Array.from(document.querySelectorAll("[data-page-size]"));
+  const pageSizeSelect = document.getElementById("pageSize");
   const btnPrev = document.getElementById("btnPrev");
   const btnNext = document.getElementById("btnNext");
   const pageInfo = document.getElementById("pageInfo");
@@ -47,7 +47,11 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   hydrateHistorial();
-  initializeSegmentedControls();
+  initializeFilterControls();
+  setupInputFocus(inputD1);
+  setupInputFocus(inputD2);
+  syncDecimalInput(inputD1);
+  syncDecimalInput(inputD2);
   cargarTabla();
 
   filterFecha.addEventListener("input", () => {
@@ -115,8 +119,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     const param = selectParam.value;
-    const d1 = parseFloat(inputD1.value);
-    const d2 = parseFloat(inputD2.value);
+    const d1 = parseDecimal(inputD1.value);
+    const d2 = parseDecimal(inputD2.value);
 
     let dif = 0;
     let limite = 0;
@@ -196,16 +200,13 @@ document.addEventListener("DOMContentLoaded", () => {
     clearValidation();
   });
 
-  pageSizeButtons.forEach((button) => {
-    button.addEventListener("click", () => {
-      const nextPageSize = parseInt(button.dataset.pageSize || "", 10);
-      if (!nextPageSize || nextPageSize === pageSize) return;
+  pageSizeSelect.addEventListener("change", () => {
+    const nextPageSize = parseInt(pageSizeSelect.value, 10);
+    if (!nextPageSize || nextPageSize === pageSize) return;
 
-      pageSize = nextPageSize;
-      syncSegmentedState(pageSizeButtons, String(pageSize), "pageSize");
-      currentPage = 1;
-      cargarTabla();
-    });
+    pageSize = nextPageSize;
+    currentPage = 1;
+    cargarTabla();
   });
 
   btnPrev.addEventListener("click", () => {
@@ -314,17 +315,27 @@ document.addEventListener("DOMContentLoaded", () => {
     saveHistorial(hist);
   }
 
-  function initializeSegmentedControls() {
-    const activePageSizeButton =
-      pageSizeButtons.find((button) => button.classList.contains("is-active")) ||
-      pageSizeButtons[0];
-    const activePageSize = parseInt(activePageSizeButton?.dataset.pageSize || "10", 10);
-
-    pageSize = activePageSize || 10;
-    syncSegmentedState(pageSizeButtons, String(pageSize), "pageSize");
+  function initializeFilterControls() {
     syncSegmentedState(filterEstadoButtons, statusFilter, "filterEstado");
-    setupSegmentedKeyboard(pageSizeButtons);
     setupSegmentedKeyboard(filterEstadoButtons);
+  }
+
+  function setupInputFocus(input) {
+    input.addEventListener("pointerup", () => {
+      if (document.activeElement === input) return;
+
+      window.requestAnimationFrame(() => {
+        input.focus();
+        const length = input.value.length;
+        if (typeof input.setSelectionRange === "function") {
+          input.setSelectionRange(length, length);
+        }
+      });
+    });
+  }
+
+  function parseDecimal(value) {
+    return parseFloat(String(value).replace(",", ".").trim());
   }
 
   function buildDatePayload(date) {
@@ -391,10 +402,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function syncSegmentedState(buttons, selectedValue, type) {
     buttons.forEach((button) => {
-      const buttonValue =
-        type === "pageSize"
-          ? button.dataset.pageSize || ""
-          : button.dataset.filterEstado || "";
+      const buttonValue = type === "filterEstado" ? button.dataset.filterEstado || "" : "";
       const isActive = buttonValue === selectedValue;
 
       button.classList.toggle("is-active", isActive);
@@ -419,6 +427,15 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  function syncDecimalInput(input) {
+    input.addEventListener("input", () => {
+      const cleaned = input.value.replace(/[^0-9,.\-]/g, "");
+      if (cleaned !== input.value) {
+        input.value = cleaned;
+      }
+    });
+  }
+
   function clearValidation() {
     selectParam.classList.remove("input-error");
     inputD1.classList.remove("input-error");
@@ -434,12 +451,12 @@ document.addEventListener("DOMContentLoaded", () => {
       valid = false;
     }
 
-    if (inputD1.value.trim() === "" || Number.isNaN(parseFloat(inputD1.value))) {
+    if (inputD1.value.trim() === "" || Number.isNaN(parseDecimal(inputD1.value))) {
       inputD1.classList.add("input-error");
       valid = false;
     }
 
-    if (inputD2.value.trim() === "" || Number.isNaN(parseFloat(inputD2.value))) {
+    if (inputD2.value.trim() === "" || Number.isNaN(parseDecimal(inputD2.value))) {
       inputD2.classList.add("input-error");
       valid = false;
     }
@@ -507,6 +524,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function buildRowMarkup(record, index) {
     const badgeClass = record.res === "C" ? "badge badge-c" : "badge badge-nc";
     const badgeLabel = record.res === "C" ? "Conforme" : "No conforme";
+    const badgeShort = record.res === "C" ? "C" : "NC";
 
     return `
       <td class="cell-num" data-label="#">${index}</td>
@@ -514,7 +532,7 @@ document.addEventListener("DOMContentLoaded", () => {
       <td class="cell-param" data-label="Parametro">${record.param}</td>
       <td class="cell-data" data-label="D1">${record.d1}</td>
       <td class="cell-data" data-label="D2">${record.d2}</td>
-      <td class="cell-estado" data-label="Estado"><span class="${badgeClass}" title="${badgeLabel}">${badgeLabel}</span></td>
+      <td class="cell-estado" data-label="Estado"><span class="${badgeClass}" title="${badgeLabel}" aria-label="${badgeLabel}">${badgeShort}</span></td>
       <td class="cell-actions" data-label="Accion"><button type="button" class="btn-delete-row" title="Eliminar registro" aria-label="Eliminar registro ${index}">Eliminar</button></td>
     `;
   }
