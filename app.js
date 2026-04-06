@@ -17,6 +17,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const pageSizeSelect = document.getElementById("pageSize");
   const btnPrev = document.getElementById("btnPrev");
   const btnNext = document.getElementById("btnNext");
+  const btnExcel = document.getElementById("btnExcel");
+  const btnCopiar = document.getElementById("btnCopiar");
+  const btnBorrar = document.getElementById("btnBorrar");
   const pageInfo = document.getElementById("pageInfo");
   const paginacionDiv = document.getElementById("paginacion");
   const btnLimpiar = document.getElementById("btnLimpiar");
@@ -31,9 +34,12 @@ document.addEventListener("DOMContentLoaded", () => {
   const btnClearFilters = document.getElementById("btnClearFilters");
   const filterSummary = document.getElementById("filterSummary");
   const toastContainer = document.getElementById("toastContainer");
+  const storageNotice = document.getElementById("storageNotice");
   const isCoarsePointer = window.matchMedia("(pointer: coarse)").matches;
 
   const STORAGE_KEY = "qaqc_modern";
+  const MAX_RECORDS = 1000;
+  const STORAGE_WARNING_COUNT = Math.ceil(MAX_RECORDS * 0.9);
   const DISPLAY_DATE_FORMATTER = new Intl.DateTimeFormat("es-PE", {
     day: "2-digit",
     month: "2-digit",
@@ -46,12 +52,57 @@ document.addEventListener("DOMContentLoaded", () => {
     month: "short",
     year: "numeric",
   });
+  const TEXT_ENCODER = new TextEncoder();
+  const ZIP_CRC_TABLE = createCrc32Table();
+  const PARAM_CONFIG = {
+    pH: {
+      tableLabel: "pH",
+      mode: "absolute",
+      limit: 0.1,
+      criterionText: "Limite: +/- 0.1",
+      formatValueText: (value) => "Error absoluto: " + value.toFixed(2),
+      validate: createGreaterThanValidator(0, "El pH debe ser mayor a 0."),
+    },
+    CE: {
+      tableLabel: "CE",
+      mode: "rpd",
+      limit: 2,
+      criterionText: "Limite: <= 2% RPD",
+      formatValueText: (value) => "RPD: " + value.toFixed(2) + "%",
+      validate: createMinimumValidator(0, "La CE no puede ser negativa."),
+    },
+    OD: {
+      tableLabel: "OD",
+      mode: "rpd",
+      limit: 4,
+      criterionText: "Limite: <= 4% RPD",
+      formatValueText: (value) => "RPD: " + value.toFixed(2) + "%",
+      validate: createMinimumValidator(0, "El OD no puede ser negativo."),
+    },
+    T: {
+      tableLabel: "Temp.",
+      mode: "absolute",
+      limit: 0.5,
+      criterionText: "Limite: <= 0.5 C",
+      formatValueText: (value) => "Error absoluto: " + value.toFixed(2) + " C",
+      validate: () => "",
+    },
+    Turbidez: {
+      tableLabel: "Turb.",
+      mode: "rpd",
+      limit: 10,
+      criterionText: "Limite: <= 10% RPD",
+      formatValueText: (value) => "RPD: " + value.toFixed(2) + "%",
+      validate: createMinimumValidator(0, "La turbidez no puede ser negativa."),
+    },
+  };
 
   hydrateHistorial();
   initializeFilterControls();
   syncDecimalInput(inputD1);
   syncDecimalInput(inputD2);
   cargarTabla();
+  registerServiceWorker();
 
   const handleFilterFechaChange = () => {
     applyFilterChange();
@@ -105,8 +156,9 @@ document.addEventListener("DOMContentLoaded", () => {
   form.addEventListener("submit", (event) => {
     event.preventDefault();
 
-    if (!validateForm()) {
-      showToast("Completa todos los campos correctamente", "error");
+    const validationMessage = validateForm();
+    if (validationMessage) {
+      showToast(validationMessage, "error");
       const firstError = form.querySelector(".input-error");
       if (firstError) firstError.focus();
       return;
@@ -115,54 +167,17 @@ document.addEventListener("DOMContentLoaded", () => {
     const param = selectParam.value;
     const d1 = parseDecimal(inputD1.value);
     const d2 = parseDecimal(inputD2.value);
-
-    let dif = 0;
-    let limite = 0;
-    let conforme = false;
-    let txtValor = "";
-    let txtCriterio = "";
-
-    if (param === "pH") {
-      dif = Math.abs(d1 - d2);
-      limite = 0.1;
-      conforme = dif <= limite;
-      txtValor = "Error absoluto: " + dif.toFixed(2);
-      txtCriterio = "Limite: +/- 0.1";
-    } else if (param === "T") {
-      dif = Math.abs(d1 - d2);
-      limite = 0.5;
-      conforme = dif <= limite;
-      txtValor = "Error absoluto: " + dif.toFixed(2) + " C";
-      txtCriterio = "Limite: <= 0.5 C";
-    } else {
-      const promedio = (d1 + d2) / 2;
-      if (promedio === 0) {
-        showToast("El promedio no puede ser cero", "error");
-        return;
-      }
-
-      dif = (Math.abs(d1 - d2) / promedio) * 100;
-
-      if (param === "CE") {
-        limite = 2;
-        txtCriterio = "Limite: <= 2% RPD";
-      } else if (param === "OD") {
-        limite = 4;
-        txtCriterio = "Limite: <= 4% RPD";
-      } else if (param === "Turbidez") {
-        limite = 10;
-        txtCriterio = "Limite: <= 10% RPD";
-      }
-
-      conforme = dif <= limite;
-      txtValor = "RPD: " + dif.toFixed(2) + "%";
+    const calculation = calculateResult(param, d1, d2);
+    if (calculation.error) {
+      showToast(calculation.error, "error");
+      return;
     }
 
     resBox.classList.remove("hidden");
-    resBox.className = "result-box " + (conforme ? "res-c" : "res-nc");
-    resIcon.textContent = conforme ? "OK" : "X";
-    resTitle.textContent = conforme ? "CONFORME" : "NO CONFORME";
-    resDetails.textContent = txtValor + " | " + txtCriterio;
+    resBox.className = "result-box " + (calculation.conforme ? "res-c" : "res-nc");
+    resIcon.textContent = calculation.conforme ? "OK" : "X";
+    resTitle.textContent = calculation.conforme ? "CONFORME" : "NO CONFORME";
+    resDetails.textContent = calculation.valueText + " | " + calculation.criterionText;
 
     const now = new Date();
     const registro = {
@@ -171,11 +186,20 @@ document.addEventListener("DOMContentLoaded", () => {
       param,
       d1,
       d2,
-      res: conforme ? "C" : "NC",
-      valor: dif.toFixed(2),
+      res: calculation.conforme ? "C" : "NC",
+      valor: calculation.value.toFixed(2),
     };
 
     const hist = getHistorial();
+    if (hist.length >= MAX_RECORDS) {
+      updateStorageNotice(hist.length);
+      showToast(
+        "Historial lleno (" + MAX_RECORDS + "). Exporta el Excel y vacia registros antiguos para seguir guardando.",
+        "error"
+      );
+      return;
+    }
+
     hist.unshift(registro);
     if (!saveHistorial(hist)) {
       return;
@@ -183,6 +207,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
     currentPage = 1;
     cargarTabla();
+    if (hist.length === STORAGE_WARNING_COUNT) {
+      showToast(
+        "Historial al 90% de capacidad. Exporta el Excel y elimina registros antiguos pronto.",
+        "info"
+      );
+    }
 
     inputD1.value = "";
     inputD2.value = "";
@@ -236,7 +266,7 @@ document.addEventListener("DOMContentLoaded", () => {
     );
   });
 
-  document.getElementById("btnBorrar").addEventListener("click", () => {
+  btnBorrar.addEventListener("click", () => {
     const hist = getHistorial();
     if (hist.length === 0) {
       showToast("No hay registros que limpiar", "info");
@@ -265,51 +295,31 @@ document.addEventListener("DOMContentLoaded", () => {
     if (event.target === modalOverlay) closeModal();
   });
 
-  document.getElementById("btnExcel").addEventListener("click", () => {
-    const hist = getHistorial();
-    if (hist.length === 0) {
+  btnExcel.addEventListener("click", () => {
+    const exportRows = buildExportRows(getHistorial());
+    if (exportRows.length === 0) {
       showToast("No hay datos para exportar", "info");
       return;
     }
 
-    const headerBg = "#00A0DF";
-    let tablaHtml =
-      "<html xmlns:x='urn:schemas-microsoft-com:office:excel'><head><meta charset='utf-8'></head><body><table border='1'>" +
-      "<tr>" +
-      "<th style='background:" + headerBg + "; color:white; font-weight:bold;'>N</th>" +
-      "<th style='background:" + headerBg + "; color:white; font-weight:bold;'>PARAMETRO</th>" +
-      "<th style='background:" + headerBg + "; color:white; font-weight:bold;'>ESTADO</th>" +
-      "<th style='background:" + headerBg + "; color:white; font-weight:bold;'>D1</th>" +
-      "<th style='background:" + headerBg + "; color:white; font-weight:bold;'>D2</th>" +
-      "<th style='background:" + headerBg + "; color:white; font-weight:bold;'>FECHA</th>" +
-      "<th style='background:" + headerBg + "; color:white; font-weight:bold;'>ERROR/RPD</th>" +
-      "</tr>";
-
-    hist.forEach((record, index) => {
-      const color = record.res === "C" ? "#38a169" : "#e53e3e";
-      const estado = record.res === "C" ? "Conforme" : "No conforme";
-      tablaHtml +=
-        "<tr>" +
-        "<td>" + (index + 1) + "</td>" +
-        "<td>" + formatParamLabel(record.param) + "</td>" +
-        "<td style='color:" + color + "; font-weight:bold;'>" + estado + "</td>" +
-        "<td>" + record.d1 + "</td>" +
-        "<td>" + record.d2 + "</td>" +
-        "<td>" + (record.fecha || "") + "</td>" +
-        "<td>" + record.valor + "</td>" +
-        "</tr>";
-    });
-
-    tablaHtml += "</table></body></html>";
-
-    const blob = new Blob([tablaHtml], { type: "application/vnd.ms-excel" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = "Monitoreo_QAQC_" + formatDateKey(new Date()) + ".xls";
-    link.click();
-    URL.revokeObjectURL(link.href);
-
+    const workbookBlob = createXlsxBlob(exportRows);
+    downloadBlob(workbookBlob, "Monitoreo_QAQC_" + formatDateKey(new Date()) + ".xlsx");
     showToast("Excel descargado correctamente", "success");
+  });
+
+  btnCopiar.addEventListener("click", async () => {
+    const exportRows = buildExportRows(getHistorial());
+    if (exportRows.length === 0) {
+      showToast("No hay datos para copiar", "info");
+      return;
+    }
+
+    try {
+      await copyTextToClipboard(buildClipboardText(exportRows));
+      showToast("Historial copiado al portapapeles", "success");
+    } catch {
+      showToast("No se pudo copiar el historial", "error");
+    }
   });
 
   function hydrateHistorial() {
@@ -328,6 +338,64 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     return Number(normalizeDecimalString(value));
+  }
+
+  function createGreaterThanValidator(minExclusive, message) {
+    return (value) => (value > minExclusive ? "" : message);
+  }
+
+  function createMinimumValidator(min, message) {
+    return (value) => (value >= min ? "" : message);
+  }
+
+  function validateMeasurementField(input, param, fieldLabel) {
+    const trimmed = input.value.trim();
+    if (!trimmed) {
+      return fieldLabel + " es obligatorio";
+    }
+
+    const value = parseDecimal(trimmed);
+    if (Number.isNaN(value)) {
+      return fieldLabel + " debe ser un numero valido";
+    }
+
+    const config = PARAM_CONFIG[param];
+    if (!config) {
+      return "Selecciona un parametro";
+    }
+
+    return config.validate(value);
+  }
+
+  function calculateResult(param, d1, d2) {
+    const config = PARAM_CONFIG[param];
+    if (!config) {
+      return { error: "Selecciona un parametro valido" };
+    }
+
+    if (config.mode === "absolute") {
+      const value = Math.abs(d1 - d2);
+      return {
+        value,
+        conforme: value <= config.limit,
+        valueText: config.formatValueText(value),
+        criterionText: config.criterionText,
+      };
+    }
+
+    const promedio = (d1 + d2) / 2;
+    const base = Math.abs(promedio);
+    if (base === 0) {
+      return { error: "El promedio no puede ser cero" };
+    }
+
+    const value = (Math.abs(d1 - d2) / base) * 100;
+    return {
+      value,
+      conforme: value <= config.limit,
+      valueText: config.formatValueText(value),
+      criterionText: config.criterionText,
+    };
   }
 
   function buildDatePayload(date) {
@@ -371,6 +439,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const d1 = Number(safeRecord.d1);
     const d2 = Number(safeRecord.d2);
     const valor = Number(safeRecord.valor);
+    const param = typeof safeRecord.param === "string" && PARAM_CONFIG[safeRecord.param] ? safeRecord.param : "";
 
     return {
       ...safeRecord,
@@ -378,7 +447,7 @@ document.addEventListener("DOMContentLoaded", () => {
       fecha: safeRecord.fecha || "",
       fechaKey,
       createdAt,
-      param: typeof safeRecord.param === "string" ? safeRecord.param : "",
+      param,
       d1,
       d2,
       res: safeRecord.res === "C" || safeRecord.res === "NC" ? safeRecord.res : "",
@@ -408,7 +477,10 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch (error) {
       console.error("No se pudo guardar el historial", error);
       if (!silent) {
-        showToast("No se pudo guardar el historial", "error");
+        const message = isQuotaExceededError(error)
+          ? "Se lleno el almacenamiento local. Exporta el Excel y vacia registros antiguos."
+          : "No se pudo guardar el historial";
+        showToast(message, "error");
       }
       return false;
     }
@@ -501,25 +573,27 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function validateForm() {
-    let valid = true;
     clearValidation();
 
     if (!selectParam.value) {
       selectParam.classList.add("input-error");
-      valid = false;
+      return "Selecciona un parametro";
     }
 
-    if (inputD1.value.trim() === "" || Number.isNaN(parseDecimal(inputD1.value))) {
+    const d1Message = validateMeasurementField(inputD1, selectParam.value, "D1");
+    const d2Message = validateMeasurementField(inputD2, selectParam.value, "D2");
+
+    if (d1Message) {
       inputD1.classList.add("input-error");
-      valid = false;
+      return d1Message;
     }
 
-    if (inputD2.value.trim() === "" || Number.isNaN(parseDecimal(inputD2.value))) {
+    if (d2Message) {
       inputD2.classList.add("input-error");
-      valid = false;
+      return d2Message;
     }
 
-    return valid;
+    return "";
   }
 
   function applyFilters(hist) {
@@ -574,7 +648,7 @@ document.addEventListener("DOMContentLoaded", () => {
       typeof record.id === "string" &&
       record.id &&
       typeof record.param === "string" &&
-      record.param &&
+      PARAM_CONFIG[record.param] &&
       Number.isFinite(record.d1) &&
       Number.isFinite(record.d2) &&
       (record.res === "C" || record.res === "NC") &&
@@ -611,15 +685,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function formatParamLabel(param) {
-    const labels = {
-      pH: "pH",
-      CE: "CE",
-      OD: "OD",
-      T: "Temp.",
-      Turbidez: "Turb.",
-    };
-
-    return labels[param] || param;
+    return PARAM_CONFIG[param]?.tableLabel || param;
   }
 
   function updatePaginationState(totalItems) {
@@ -645,6 +711,7 @@ document.addEventListener("DOMContentLoaded", () => {
     lastFilterSignature = getFilterSignature();
     currentPage = Math.min(Math.max(currentPage, 1), totalPages);
     updateFilterSummary(filtered.length, hist.length);
+    updateStorageNotice(hist.length);
 
     if (hist.length === 0) {
       tbody.replaceChildren();
@@ -704,7 +771,7 @@ document.addEventListener("DOMContentLoaded", () => {
     modalOverlay.classList.add("hidden");
     document.body.style.overflow = "";
     modalOverlay.removeEventListener("keydown", trapFocus);
-    document.getElementById("btnBorrar").focus();
+    btnBorrar.focus();
   }
 
   function trapFocus(event) {
@@ -729,6 +796,522 @@ document.addEventListener("DOMContentLoaded", () => {
       event.preventDefault();
       first.focus();
     }
+  }
+
+  function buildExportRows(hist) {
+    return hist.map((record, index) => ({
+      number: index + 1,
+      parametro: formatParamLabel(record.param),
+      estado: formatStatusLabel(record.res),
+      d1: record.d1,
+      d2: record.d2,
+      fecha: record.fecha || "",
+      resultado: formatExportResult(record),
+      criterio: PARAM_CONFIG[record.param]?.criterionText || "",
+      isConforme: record.res === "C",
+    }));
+  }
+
+  function formatStatusLabel(status) {
+    return status === "C" ? "Conforme" : "No conforme";
+  }
+
+  function formatExportResult(record) {
+    const config = PARAM_CONFIG[record.param];
+    const numericValue = Number(record.valor);
+    if (!config || !Number.isFinite(numericValue)) {
+      return record.valor || "";
+    }
+
+    return config.formatValueText(numericValue);
+  }
+
+  function buildClipboardText(rows) {
+    const lines = [
+      "Monitoreo QA/QC",
+      "Generado: " + DISPLAY_DATE_FORMATTER.format(new Date()) + " | Total registros: " + rows.length,
+      "",
+      ["N", "Parametro", "Estado", "D1", "D2", "Fecha", "Resultado", "Criterio"].join("\t"),
+    ];
+
+    rows.forEach((row) => {
+      lines.push(
+        [
+          row.number,
+          row.parametro,
+          row.estado,
+          row.d1,
+          row.d2,
+          row.fecha,
+          row.resultado,
+          row.criterio,
+        ].join("\t")
+      );
+    });
+
+    return lines.join("\n");
+  }
+
+  function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    window.setTimeout(() => {
+      URL.revokeObjectURL(url);
+    }, 1000);
+  }
+
+  async function copyTextToClipboard(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    textarea.style.pointerEvents = "none";
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    textarea.setSelectionRange(0, textarea.value.length);
+
+    const copied = document.execCommand("copy");
+    textarea.remove();
+
+    if (!copied) {
+      throw new Error("No se pudo copiar");
+    }
+  }
+
+  function createXlsxBlob(rows) {
+    const now = new Date();
+    const files = [
+      { name: "[Content_Types].xml", content: createContentTypesXml() },
+      { name: "_rels/.rels", content: createRootRelsXml() },
+      { name: "docProps/app.xml", content: createAppPropsXml() },
+      { name: "docProps/core.xml", content: createCorePropsXml(now) },
+      { name: "xl/workbook.xml", content: createWorkbookXml() },
+      { name: "xl/_rels/workbook.xml.rels", content: createWorkbookRelsXml() },
+      { name: "xl/styles.xml", content: createStylesXml() },
+      { name: "xl/worksheets/sheet1.xml", content: createWorksheetXml(rows, now) },
+    ];
+
+    return createZipBlob(files, now);
+  }
+
+  function createContentTypesXml() {
+    return (
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+      '<Default Extension="xml" ContentType="application/xml"/>' +
+      '<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>' +
+      '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>' +
+      '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
+      '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+      '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' +
+      "</Types>"
+    );
+  }
+
+  function createRootRelsXml() {
+    return (
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' +
+      '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>' +
+      '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>' +
+      "</Relationships>"
+    );
+  }
+
+  function createAppPropsXml() {
+    return (
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">' +
+      "<Application>Monitoreo QA/QC</Application>" +
+      "<DocSecurity>0</DocSecurity>" +
+      "<ScaleCrop>false</ScaleCrop>" +
+      '<HeadingPairs><vt:vector size="2" baseType="variant"><vt:variant><vt:lpstr>Worksheets</vt:lpstr></vt:variant><vt:variant><vt:i4>1</vt:i4></vt:variant></vt:vector></HeadingPairs>' +
+      '<TitlesOfParts><vt:vector size="1" baseType="lpstr"><vt:lpstr>Historial QAQC</vt:lpstr></vt:vector></TitlesOfParts>' +
+      "<Company>OEFA</Company>" +
+      "<LinksUpToDate>false</LinksUpToDate>" +
+      "<SharedDoc>false</SharedDoc>" +
+      "<HyperlinksChanged>false</HyperlinksChanged>" +
+      "<AppVersion>1.0</AppVersion>" +
+      "</Properties>"
+    );
+  }
+
+  function createCorePropsXml(now) {
+    const timestamp = now.toISOString();
+    return (
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">' +
+      "<dc:title>Monitoreo QA/QC</dc:title>" +
+      "<dc:creator>Monitoreo QA/QC</dc:creator>" +
+      "<cp:lastModifiedBy>Monitoreo QA/QC</cp:lastModifiedBy>" +
+      '<dcterms:created xsi:type="dcterms:W3CDTF">' + timestamp + "</dcterms:created>" +
+      '<dcterms:modified xsi:type="dcterms:W3CDTF">' + timestamp + "</dcterms:modified>" +
+      "</cp:coreProperties>"
+    );
+  }
+
+  function createWorkbookXml() {
+    return (
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+      "<sheets>" +
+      '<sheet name="Historial QAQC" sheetId="1" r:id="rId1"/>' +
+      "</sheets>" +
+      "</workbook>"
+    );
+  }
+
+  function createWorkbookRelsXml() {
+    return (
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>' +
+      '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
+      "</Relationships>"
+    );
+  }
+
+  function createStylesXml() {
+    return (
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+      '<fonts count="5">' +
+      '<font><sz val="11"/><name val="Calibri"/><family val="2"/></font>' +
+      '<font><b/><sz val="14"/><color rgb="FFFFFFFF"/><name val="Calibri"/><family val="2"/></font>' +
+      '<font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/><family val="2"/></font>' +
+      '<font><b/><sz val="11"/><color rgb="FF2E7D32"/><name val="Calibri"/><family val="2"/></font>' +
+      '<font><b/><sz val="11"/><color rgb="FFC62828"/><name val="Calibri"/><family val="2"/></font>' +
+      "</fonts>" +
+      '<fills count="7">' +
+      '<fill><patternFill patternType="none"/></fill>' +
+      '<fill><patternFill patternType="gray125"/></fill>' +
+      '<fill><patternFill patternType="solid"><fgColor rgb="FF1D2939"/><bgColor indexed="64"/></patternFill></fill>' +
+      '<fill><patternFill patternType="solid"><fgColor rgb="FF0090CA"/><bgColor indexed="64"/></patternFill></fill>' +
+      '<fill><patternFill patternType="solid"><fgColor rgb="FFE5F3FA"/><bgColor indexed="64"/></patternFill></fill>' +
+      '<fill><patternFill patternType="solid"><fgColor rgb="FFEAF4E4"/><bgColor indexed="64"/></patternFill></fill>' +
+      '<fill><patternFill patternType="solid"><fgColor rgb="FFFEF2F2"/><bgColor indexed="64"/></patternFill></fill>' +
+      "</fills>" +
+      '<borders count="2">' +
+      "<border><left/><right/><top/><bottom/><diagonal/></border>" +
+      '<border><left style="thin"><color rgb="FFDCE1E8"/></left><right style="thin"><color rgb="FFDCE1E8"/></right><top style="thin"><color rgb="FFDCE1E8"/></top><bottom style="thin"><color rgb="FFDCE1E8"/></bottom><diagonal/></border>' +
+      "</borders>" +
+      '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
+      '<cellXfs count="7">' +
+      '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
+      '<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>' +
+      '<xf numFmtId="0" fontId="0" fillId="4" borderId="0" xfId="0" applyFill="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>' +
+      '<xf numFmtId="0" fontId="2" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>' +
+      '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>' +
+      '<xf numFmtId="0" fontId="3" fillId="5" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>' +
+      '<xf numFmtId="0" fontId="4" fillId="6" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>' +
+      "</cellXfs>" +
+      '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>' +
+      "</styleSheet>"
+    );
+  }
+
+  function createWorksheetXml(rows, now) {
+    const headers = ["N", "Parametro", "Estado", "D1", "D2", "Fecha", "Resultado", "Criterio"];
+    const widths = [6, 18, 16, 12, 12, 24, 22, 24];
+    const sheetRows = [
+      buildSheetRow(1, [{ value: "Monitoreo QA/QC", style: 1 }]),
+      buildSheetRow(2, [{ value: "Generado: " + DISPLAY_DATE_FORMATTER.format(now) + " | Total registros: " + rows.length, style: 2 }]),
+      buildSheetRow(
+        3,
+        headers.map((header) => ({
+          value: header,
+          style: 3,
+        }))
+      ),
+    ];
+
+    rows.forEach((row, index) => {
+      sheetRows.push(
+        buildSheetRow(4 + index, [
+          { value: row.number, type: "n", style: 4 },
+          { value: row.parametro, style: 4 },
+          { value: row.estado, style: row.isConforme ? 5 : 6 },
+          { value: row.d1, type: "n", style: 4 },
+          { value: row.d2, type: "n", style: 4 },
+          { value: row.fecha, style: 4 },
+          { value: row.resultado, style: 4 },
+          { value: row.criterio, style: 4 },
+        ])
+      );
+    });
+
+    const lastRow = rows.length + 3;
+    const colsXml = widths
+      .map((width, index) => '<col min="' + (index + 1) + '" max="' + (index + 1) + '" width="' + width + '" customWidth="1"/>')
+      .join("");
+
+    return (
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+      '<sheetViews><sheetView workbookViewId="0"><pane ySplit="3" topLeftCell="A4" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A4" sqref="A4"/></sheetView></sheetViews>' +
+      '<sheetFormatPr defaultRowHeight="18"/>' +
+      "<cols>" + colsXml + "</cols>" +
+      "<sheetData>" + sheetRows.join("") + "</sheetData>" +
+      '<autoFilter ref="A3:H' + lastRow + '"/>' +
+      '<mergeCells count="2"><mergeCell ref="A1:H1"/><mergeCell ref="A2:H2"/></mergeCells>' +
+      "</worksheet>"
+    );
+  }
+
+  function buildSheetRow(rowNumber, cells) {
+    return (
+      '<row r="' +
+      rowNumber +
+      '">' +
+      cells
+        .map((cell, index) => buildSheetCell(columnLetter(index + 1) + rowNumber, cell))
+        .join("") +
+      "</row>"
+    );
+  }
+
+  function buildSheetCell(reference, cell) {
+    const style = typeof cell.style === "number" ? cell.style : 0;
+    if (cell.type === "n" && Number.isFinite(cell.value)) {
+      return '<c r="' + reference + '" s="' + style + '"><v>' + cell.value + "</v></c>";
+    }
+
+    return (
+      '<c r="' +
+      reference +
+      '" s="' +
+      style +
+      '" t="inlineStr"><is><t>' +
+      escapeXml(cell.value == null ? "" : String(cell.value)) +
+      "</t></is></c>"
+    );
+  }
+
+  function columnLetter(columnNumber) {
+    let current = columnNumber;
+    let result = "";
+
+    while (current > 0) {
+      const remainder = (current - 1) % 26;
+      result = String.fromCharCode(65 + remainder) + result;
+      current = Math.floor((current - 1) / 26);
+    }
+
+    return result;
+  }
+
+  function escapeXml(value) {
+    return String(value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&apos;");
+  }
+
+  function createZipBlob(files, now) {
+    const localParts = [];
+    const centralParts = [];
+    const dosDateTime = getDosDateTime(now);
+    let offset = 0;
+
+    files.forEach((file) => {
+      const nameBytes = TEXT_ENCODER.encode(file.name);
+      const contentBytes = TEXT_ENCODER.encode(file.content);
+      const crc = crc32(contentBytes);
+      const localHeader = new Uint8Array(30 + nameBytes.length);
+      const localView = new DataView(localHeader.buffer);
+
+      localView.setUint32(0, 0x04034b50, true);
+      localView.setUint16(4, 20, true);
+      localView.setUint16(6, 0, true);
+      localView.setUint16(8, 0, true);
+      localView.setUint16(10, dosDateTime.time, true);
+      localView.setUint16(12, dosDateTime.date, true);
+      localView.setUint32(14, crc, true);
+      localView.setUint32(18, contentBytes.length, true);
+      localView.setUint32(22, contentBytes.length, true);
+      localView.setUint16(26, nameBytes.length, true);
+      localView.setUint16(28, 0, true);
+      localHeader.set(nameBytes, 30);
+
+      localParts.push(localHeader, contentBytes);
+
+      const centralHeader = new Uint8Array(46 + nameBytes.length);
+      const centralView = new DataView(centralHeader.buffer);
+      centralView.setUint32(0, 0x02014b50, true);
+      centralView.setUint16(4, 20, true);
+      centralView.setUint16(6, 20, true);
+      centralView.setUint16(8, 0, true);
+      centralView.setUint16(10, 0, true);
+      centralView.setUint16(12, dosDateTime.time, true);
+      centralView.setUint16(14, dosDateTime.date, true);
+      centralView.setUint32(16, crc, true);
+      centralView.setUint32(20, contentBytes.length, true);
+      centralView.setUint32(24, contentBytes.length, true);
+      centralView.setUint16(28, nameBytes.length, true);
+      centralView.setUint16(30, 0, true);
+      centralView.setUint16(32, 0, true);
+      centralView.setUint16(34, 0, true);
+      centralView.setUint16(36, 0, true);
+      centralView.setUint32(38, 0, true);
+      centralView.setUint32(42, offset, true);
+      centralHeader.set(nameBytes, 46);
+
+      centralParts.push(centralHeader);
+      offset += localHeader.length + contentBytes.length;
+    });
+
+    const centralDirectoryOffset = offset;
+    const centralDirectorySize = centralParts.reduce((total, part) => total + part.length, 0);
+    const endRecord = new Uint8Array(22);
+    const endView = new DataView(endRecord.buffer);
+    endView.setUint32(0, 0x06054b50, true);
+    endView.setUint16(4, 0, true);
+    endView.setUint16(6, 0, true);
+    endView.setUint16(8, files.length, true);
+    endView.setUint16(10, files.length, true);
+    endView.setUint32(12, centralDirectorySize, true);
+    endView.setUint32(16, centralDirectoryOffset, true);
+    endView.setUint16(20, 0, true);
+
+    return new Blob([...localParts, ...centralParts, endRecord], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+  }
+
+  function getDosDateTime(date) {
+    const safeYear = Math.max(date.getFullYear(), 1980);
+    return {
+      date: ((safeYear - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate(),
+      time: (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2),
+    };
+  }
+
+  function createCrc32Table() {
+    const table = new Uint32Array(256);
+
+    for (let index = 0; index < 256; index += 1) {
+      let current = index;
+      for (let bit = 0; bit < 8; bit += 1) {
+        current = (current & 1) === 1 ? 0xedb88320 ^ (current >>> 1) : current >>> 1;
+      }
+      table[index] = current >>> 0;
+    }
+
+    return table;
+  }
+
+  function crc32(bytes) {
+    let crc = 0xffffffff;
+
+    for (const byte of bytes) {
+      crc = ZIP_CRC_TABLE[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+    }
+
+    return (crc ^ 0xffffffff) >>> 0;
+  }
+
+  function updateStorageNotice(totalRecords) {
+    if (!storageNotice) return;
+
+    if (totalRecords >= MAX_RECORDS) {
+      storageNotice.textContent =
+        "Historial lleno: " +
+        totalRecords +
+        " / " +
+        MAX_RECORDS +
+        " registros. Exporta el Excel y vacia registros antiguos para seguir guardando.";
+      storageNotice.className = "storage-notice is-full";
+      return;
+    }
+
+    if (totalRecords >= STORAGE_WARNING_COUNT) {
+      storageNotice.textContent =
+        "Historial casi lleno: " +
+        totalRecords +
+        " / " +
+        MAX_RECORDS +
+        " registros. Se recomienda exportar el Excel y limpiar registros antiguos.";
+      storageNotice.className = "storage-notice is-warning";
+      return;
+    }
+
+    storageNotice.textContent = "";
+    storageNotice.className = "storage-notice hidden";
+  }
+
+  function isQuotaExceededError(error) {
+    return Boolean(
+      error &&
+      (error.name === "QuotaExceededError" ||
+        error.name === "NS_ERROR_DOM_QUOTA_REACHED" ||
+        error.code === 22 ||
+        error.code === 1014)
+    );
+  }
+
+  function registerServiceWorker() {
+    if (!("serviceWorker" in navigator)) return;
+
+    const hadController = Boolean(navigator.serviceWorker.controller);
+    let hasRefreshed = false;
+
+    const activateWaitingWorker = (worker, shouldNotify) => {
+      if (!worker) return;
+      if (shouldNotify) {
+        showToast("Actualizacion encontrada. Recargando la version mas reciente...", "info");
+      }
+      worker.postMessage({ type: "SKIP_WAITING" });
+    };
+
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (!hadController || hasRefreshed) return;
+      hasRefreshed = true;
+      window.location.reload();
+    });
+
+    window.addEventListener("load", () => {
+      navigator.serviceWorker
+        .register("sw.js", { updateViaCache: "none" })
+        .then((reg) => {
+          if (reg.waiting) {
+            activateWaitingWorker(reg.waiting, false);
+          }
+
+          reg.addEventListener("updatefound", () => {
+            const installing = reg.installing;
+            if (!installing) return;
+
+            installing.addEventListener("statechange", () => {
+              if (installing.state === "installed" && navigator.serviceWorker.controller) {
+                activateWaitingWorker(installing, true);
+              }
+            });
+          });
+
+          reg.update();
+          console.log("SW registrado:", reg.scope);
+        })
+        .catch((error) => {
+          console.log("SW error:", error);
+        });
+    });
   }
 
   function showToast(message, type) {

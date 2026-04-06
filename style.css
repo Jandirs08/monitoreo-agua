@@ -389,6 +389,21 @@ select.input-error:focus,
     box-shadow: var(--shadow-md);
 }
 
+.btn-secondary {
+    width: 100%;
+    background: var(--bg-card);
+    color: var(--text-700);
+    border: 1.5px solid var(--border);
+    box-shadow: var(--shadow-sm);
+}
+
+.btn-secondary:hover {
+    background: var(--surface);
+    border-color: rgba(0, 144, 202, 0.28);
+    color: var(--blue-dark);
+    box-shadow: var(--shadow-md);
+}
+
 .btn-outline-danger {
     width: 100%;
     background: transparent;
@@ -526,7 +541,7 @@ select.input-error:focus,
 /* ===== FILTER BAR ===== */
 .filter-bar {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr) minmax(112px, auto);
     align-items: end;
     gap: 10px;
     margin-bottom: 8px;
@@ -860,7 +875,36 @@ td.cell-actions {
 .table-actions {
     display: flex;
     flex-direction: column;
+    flex-wrap: wrap;
     gap: 8px;
+}
+
+.table-actions .btn {
+    flex: 1 1 180px;
+}
+
+.storage-notice {
+    margin-top: 12px;
+    padding: 12px 14px;
+    border-radius: var(--radius-md);
+    border: 1px solid rgba(0, 144, 202, 0.2);
+    background: var(--blue-light);
+    color: var(--blue-dark);
+    font-size: 0.82rem;
+    font-weight: 600;
+    line-height: 1.5;
+}
+
+.storage-notice.is-warning {
+    border-color: rgba(0, 144, 202, 0.2);
+    background: var(--blue-light);
+    color: var(--blue-dark);
+}
+
+.storage-notice.is-full {
+    border-color: rgba(198, 40, 40, 0.2);
+    background: var(--danger-bg);
+    color: var(--danger);
 }
 
 @media (min-width: 480px) {
@@ -1088,6 +1132,7 @@ td.cell-actions {
 
     .filter-bar {
         grid-template-columns: 1fr;
+        gap: 12px;
     }
 
     .btn-clear-filter {
@@ -1146,6 +1191,40 @@ td.cell-actions {
 
     .select-arrow {
         display: none;
+    }
+}
+
+@media (max-width: 480px) {
+    .filter-bar {
+        padding: 10px;
+    }
+
+    .filter-item--status {
+        gap: 6px;
+    }
+
+    .segmented-control {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-auto-flow: row;
+    }
+
+    .segmented-control--compact {
+        min-width: 0;
+    }
+
+    .segment-btn {
+        min-height: 44px;
+        padding: 8px 6px;
+        font-size: 0.84rem;
+        line-height: 1.15;
+        text-align: center;
+        white-space: normal;
+        word-break: keep-all;
+    }
+
+    .btn-clear-filter {
+        min-height: 44px;
+        font-size: 0.86rem;
     }
 }
 

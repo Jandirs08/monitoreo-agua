@@ -162,12 +162,16 @@
 
         <div class="table-actions">
             <button id="btnExcel" class="btn btn-success" aria-label="Descargar historial como Excel">
-                <span aria-hidden="true">&#128202;</span> Descargar Excel (.xls)
+                <span aria-hidden="true">&#128202;</span> Descargar Excel (.xlsx)
+            </button>
+            <button id="btnCopiar" class="btn btn-secondary" aria-label="Copiar todo el historial">
+                <span aria-hidden="true">&#128203;</span> Copiar Historial
             </button>
             <button id="btnBorrar" class="btn btn-outline-danger" aria-label="Vaciar todo el historial">
                 <span aria-hidden="true">&#128465;</span> Vaciar Historial
             </button>
         </div>
+        <div id="storageNotice" class="storage-notice hidden" aria-live="polite"></div>
     </section>
 
     <footer class="app-footer" role="contentinfo">
@@ -190,17 +194,5 @@
 <div id="toastContainer" class="toast-container" aria-live="polite" aria-relevant="additions"></div>
 
 <script src="app.js"></script>
-<script>
-    if ("serviceWorker" in navigator) {
-        window.addEventListener("load", () => {
-            navigator.serviceWorker.register("sw.js", { updateViaCache: "none" })
-                .then((reg) => {
-                    reg.update();
-                    console.log("SW registrado:", reg.scope);
-                })
-                .catch((err) => console.log("SW error:", err));
-        });
-    }
-</script>
 </body>
 </html>
