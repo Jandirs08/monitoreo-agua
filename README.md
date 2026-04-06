@@ -72,12 +72,12 @@
 - Si se publica una nueva version, el usuario debe abrir la app con internet para recibir la actualizacion.
 - Una primera apertura totalmente offline no tendra archivos cacheados.
 
-## 8. Actualizacion de la app con Vercel por consola
+## 8. Publicacion con Vercel por consola
 
 ### Requisitos previos
 - Tener `Node.js` instalado.
-- Tener acceso al proyecto en Vercel.
-- Tener la carpeta local del proyecto.
+- Tener una cuenta en Vercel.
+- Tener la carpeta local del proyecto con todos los archivos entregados.
 
 ### Instalacion de Vercel CLI
 Ejecutar en `CMD`:
@@ -95,19 +95,35 @@ vercel login
 
 Seguir las instrucciones de inicio de sesion.
 
-### Vinculacion inicial del proyecto
-Este paso se realiza una sola vez en la carpeta del proyecto, si la carpeta aun no esta vinculada.
+### Primer despliegue
+Este procedimiento aplica cuando se recibe la carpeta del proyecto por primera vez.
 
-Ubicarse en la carpeta del proyecto y ejecutar:
+1. Copiar la carpeta del proyecto en el equipo.
+2. Abrir `CMD` dentro de la carpeta del proyecto.
+3. Ejecutar:
 
 ```powershell
 vercel
 ```
 
-La consola solicitara datos de vinculacion del proyecto.
-Al finalizar, se creara la carpeta `.vercel` en el proyecto.
+4. Responder las preguntas de la consola.
+   La vinculacion inicial puede solicitar:
+   - confirmar que se desea desplegar esa carpeta
+   - seleccionar la cuenta
+   - indicar el nombre del proyecto
+   - confirmar la carpeta actual del proyecto
+5. Al finalizar, la consola devolvera una URL de despliegue.
+6. Para publicar directamente en produccion, ejecutar despues:
 
-### Publicacion cuando se requiera un cambio
+```powershell
+vercel --prod
+```
+
+7. En la primera configuracion se creara la carpeta `.vercel` dentro del proyecto.
+
+### Publicacion posterior
+Este procedimiento aplica cuando el proyecto ya fue vinculado antes en esa misma carpeta.
+
 1. Guardar los cambios en los archivos del proyecto.
 2. Abrir `CMD` dentro de la carpeta del proyecto.
 3. Ejecutar:
