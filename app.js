@@ -730,8 +730,22 @@ document.addEventListener("DOMContentLoaded", () => {
     const badgeLabel = record.res === "C" ? "Conforme" : "No conforme";
     const paramLabel = formatParamLabel(record.param);
 
-    const d1Display = record.param === "Turbidez" && record.d1Redondeado != null ? record.d1Redondeado : record.d1;
-    const d2Display = record.param === "Turbidez" && record.d2Redondeado != null ? record.d2Redondeado : record.d2;
+    let d1Display = record.d1;
+    let d2Display = record.d2;
+    
+    if (record.param === "Turbidez") {
+      if (record.d1Redondeado != null && record.d1Bruto != null) {
+        d1Display = record.d1Redondeado + " (" + record.d1Bruto + ")";
+      } else if (record.d1Redondeado != null) {
+        d1Display = record.d1Redondeado;
+      }
+      
+      if (record.d2Redondeado != null && record.d2Bruto != null) {
+        d2Display = record.d2Redondeado + " (" + record.d2Bruto + ")";
+      } else if (record.d2Redondeado != null) {
+        d2Display = record.d2Redondeado;
+      }
+    }
 
     return `
       <td class="cell-num" data-label="#">${index}</td>
@@ -860,8 +874,22 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function buildExportRows(hist) {
     return hist.map((record, index) => {
-      const d1Display = record.param === "Turbidez" && record.d1Redondeado != null ? record.d1Redondeado : record.d1;
-      const d2Display = record.param === "Turbidez" && record.d2Redondeado != null ? record.d2Redondeado : record.d2;
+      let d1Display = record.d1;
+      let d2Display = record.d2;
+      
+      if (record.param === "Turbidez") {
+        if (record.d1Redondeado != null && record.d1Bruto != null) {
+          d1Display = record.d1Redondeado + " (" + record.d1Bruto + ")";
+        } else if (record.d1Redondeado != null) {
+          d1Display = record.d1Redondeado;
+        }
+        
+        if (record.d2Redondeado != null && record.d2Bruto != null) {
+          d2Display = record.d2Redondeado + " (" + record.d2Bruto + ")";
+        } else if (record.d2Redondeado != null) {
+          d2Display = record.d2Redondeado;
+        }
+      }
       
       return {
         number: index + 1,
