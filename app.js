@@ -23,6 +23,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const pageInfo = document.getElementById("pageInfo");
   const paginacionDiv = document.getElementById("paginacion");
   const btnLimpiar = document.getElementById("btnLimpiar");
+  const inputPunto = document.getElementById("punto");
   const inputD1 = document.getElementById("dato1");
   const inputD2 = document.getElementById("dato2");
   const selectParam = document.getElementById("parametro");
@@ -167,6 +168,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const param = selectParam.value;
     const d1 = parseDecimal(inputD1.value);
     const d2 = parseDecimal(inputD2.value);
+    const punto = inputPunto.value.trim();
     const calculation = calculateResult(param, d1, d2);
     if (calculation.error) {
       showToast(calculation.error, "error");
@@ -184,8 +186,13 @@ document.addEventListener("DOMContentLoaded", () => {
       id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
       ...buildDatePayload(now),
       param,
+      punto: punto || null,
       d1,
       d2,
+      d1Bruto: param === "Turbidez" ? d1 : null,
+      d1Redondeado: calculation.d1Rounded,
+      d2Bruto: param === "Turbidez" ? d2 : null,
+      d2Redondeado: calculation.d2Rounded,
       res: calculation.conforme ? "C" : "NC",
       valor: calculation.value.toFixed(2),
     };
@@ -224,6 +231,7 @@ document.addEventListener("DOMContentLoaded", () => {
   btnLimpiar.addEventListener("click", () => {
     resBox.classList.add("hidden");
     clearValidation();
+    inputPunto.value = "";
   });
 
   pageSizeSelect.addEventListener("change", () => {
@@ -367,34 +375,73 @@ document.addEventListener("DOMContentLoaded", () => {
     return config.validate(value);
   }
 
+  function roundToNearestMultiple(value, multiple) {
+    if (multiple === 0) return value;
+    return Math.round(value / multiple) * multiple;
+  }
+
+  function roundTurbidityValue(value) {
+    if (value <= 1) {
+      return roundToNearestMultiple(value, 0.05);
+    } else if (value <= 10) {
+      return roundToNearestMultiple(value, 0.1);
+    } else if (value <= 40) {
+      return roundToNearestMultiple(value, 1);
+    } else if (value <= 100) {
+      return roundToNearestMultiple(value, 5);
+    } else if (value <= 400) {
+      return roundToNearestMultiple(value, 10);
+    } else if (value <= 1000) {
+      return roundToNearestMultiple(value, 50);
+    } else {
+      return roundToNearestMultiple(value, 100);
+    }
+  }
+
   function calculateResult(param, d1, d2) {
     const config = PARAM_CONFIG[param];
     if (!config) {
       return { error: "Selecciona un parametro valido" };
     }
 
+    let d1Calc = d1;
+    let d2Calc = d2;
+    let d1Rounded = null;
+    let d2Rounded = null;
+
+    if (param === "Turbidez") {
+      d1Rounded = roundTurbidityValue(d1);
+      d2Rounded = roundTurbidityValue(d2);
+      d1Calc = d1Rounded;
+      d2Calc = d2Rounded;
+    }
+
     if (config.mode === "absolute") {
-      const value = Math.abs(d1 - d2);
+      const value = Math.abs(d1Calc - d2Calc);
       return {
         value,
         conforme: value <= config.limit,
         valueText: config.formatValueText(value),
         criterionText: config.criterionText,
+        d1Rounded,
+        d2Rounded,
       };
     }
 
-    const promedio = (d1 + d2) / 2;
+    const promedio = (d1Calc + d2Calc) / 2;
     const base = Math.abs(promedio);
     if (base === 0) {
       return { error: "El promedio no puede ser cero" };
     }
 
-    const value = (Math.abs(d1 - d2) / base) * 100;
+    const value = (Math.abs(d1Calc - d2Calc) / base) * 100;
     return {
       value,
       conforme: value <= config.limit,
       valueText: config.formatValueText(value),
       criterionText: config.criterionText,
+      d1Rounded,
+      d2Rounded,
     };
   }
 
@@ -440,6 +487,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const d2 = Number(safeRecord.d2);
     const valor = Number(safeRecord.valor);
     const param = typeof safeRecord.param === "string" && PARAM_CONFIG[safeRecord.param] ? safeRecord.param : "";
+    const punto = typeof safeRecord.punto === "string" ? safeRecord.punto : (safeRecord.punto == null ? null : "");
+    const d1Bruto = safeRecord.d1Bruto != null ? Number(safeRecord.d1Bruto) : null;
+    const d2Bruto = safeRecord.d2Bruto != null ? Number(safeRecord.d2Bruto) : null;
+    const d1Redondeado = safeRecord.d1Redondeado != null ? Number(safeRecord.d1Redondeado) : null;
+    const d2Redondeado = safeRecord.d2Redondeado != null ? Number(safeRecord.d2Redondeado) : null;
 
     return {
       ...safeRecord,
@@ -448,8 +500,13 @@ document.addEventListener("DOMContentLoaded", () => {
       fechaKey,
       createdAt,
       param,
+      punto,
       d1,
       d2,
+      d1Bruto,
+      d2Bruto,
+      d1Redondeado,
+      d2Redondeado,
       res: safeRecord.res === "C" || safeRecord.res === "NC" ? safeRecord.res : "",
       valor: Number.isFinite(valor) ? valor.toFixed(2) : "",
     };
@@ -673,12 +730,15 @@ document.addEventListener("DOMContentLoaded", () => {
     const badgeLabel = record.res === "C" ? "Conforme" : "No conforme";
     const paramLabel = formatParamLabel(record.param);
 
+    const d1Display = record.param === "Turbidez" && record.d1Redondeado != null ? record.d1Redondeado : record.d1;
+    const d2Display = record.param === "Turbidez" && record.d2Redondeado != null ? record.d2Redondeado : record.d2;
+
     return `
       <td class="cell-num" data-label="#">${index}</td>
       <td class="cell-param" data-label="Parametro" title="${record.param}">${paramLabel}</td>
       <td class="cell-estado" data-label="Estado"><span class="${badgeClass}" title="${badgeLabel}" aria-label="${badgeLabel}"><span class="badge-dot" aria-hidden="true"></span>${badgeLabel}</span></td>
-      <td class="cell-data" data-label="D1">${record.d1}</td>
-      <td class="cell-data" data-label="D2">${record.d2}</td>
+      <td class="cell-data" data-label="D1">${d1Display}</td>
+      <td class="cell-data" data-label="D2">${d2Display}</td>
       <td class="cell-fecha" data-label="Fecha">${record.fecha || "-"}</td>
       <td class="cell-actions" data-label="Accion"><button type="button" class="btn-delete-row" title="Eliminar registro" aria-label="Eliminar registro ${index}">Eliminar</button></td>
     `;
@@ -799,17 +859,25 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function buildExportRows(hist) {
-    return hist.map((record, index) => ({
-      number: index + 1,
-      parametro: formatParamLabel(record.param),
-      estado: formatStatusLabel(record.res),
-      d1: record.d1,
-      d2: record.d2,
-      fecha: record.fecha || "",
-      resultado: formatExportResult(record),
-      criterio: PARAM_CONFIG[record.param]?.criterionText || "",
-      isConforme: record.res === "C",
-    }));
+    return hist.map((record, index) => {
+      const d1Display = record.param === "Turbidez" && record.d1Redondeado != null ? record.d1Redondeado : record.d1;
+      const d2Display = record.param === "Turbidez" && record.d2Redondeado != null ? record.d2Redondeado : record.d2;
+      
+      return {
+        number: index + 1,
+        punto: record.punto || "-",
+        parametro: formatParamLabel(record.param),
+        estado: formatStatusLabel(record.res),
+        d1: d1Display,
+        d2: d2Display,
+        d1Bruto: record.d1Bruto != null ? record.d1Bruto : "-",
+        d2Bruto: record.d2Bruto != null ? record.d2Bruto : "-",
+        fecha: record.fecha || "",
+        resultado: formatExportResult(record),
+        criterio: PARAM_CONFIG[record.param]?.criterionText || "",
+        isConforme: record.res === "C",
+      };
+    });
   }
 
   function formatStatusLabel(status) {
@@ -831,17 +899,20 @@ document.addEventListener("DOMContentLoaded", () => {
       "Monitoreo QA/QC",
       "Generado: " + DISPLAY_DATE_FORMATTER.format(new Date()) + " | Total registros: " + rows.length,
       "",
-      ["N", "Parametro", "Estado", "D1", "D2", "Fecha", "Resultado", "Criterio"].join("\t"),
+      ["N", "Punto", "Parametro", "Estado", "D1", "D2", "D1 Bruto", "D2 Bruto", "Fecha", "Resultado", "Criterio"].join("\t"),
     ];
 
     rows.forEach((row) => {
       lines.push(
         [
           row.number,
+          row.punto,
           row.parametro,
           row.estado,
           row.d1,
           row.d2,
+          row.d1Bruto,
+          row.d2Bruto,
           row.fecha,
           row.resultado,
           row.criterio,
@@ -1026,8 +1097,8 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function createWorksheetXml(rows, now) {
-    const headers = ["N", "Parametro", "Estado", "D1", "D2", "Fecha", "Resultado", "Criterio"];
-    const widths = [6, 18, 16, 12, 12, 24, 22, 24];
+    const headers = ["N", "Punto", "Parametro", "Estado", "D1", "D2", "D1 Bruto", "D2 Bruto", "Fecha", "Resultado", "Criterio"];
+    const widths = [6, 16, 18, 16, 12, 12, 12, 12, 24, 22, 24];
     const sheetRows = [
       buildSheetRow(1, [{ value: "Monitoreo QA/QC", style: 1 }]),
       buildSheetRow(2, [{ value: "Generado: " + DISPLAY_DATE_FORMATTER.format(now) + " | Total registros: " + rows.length, style: 2 }]),
@@ -1044,10 +1115,13 @@ document.addEventListener("DOMContentLoaded", () => {
       sheetRows.push(
         buildSheetRow(4 + index, [
           { value: row.number, type: "n", style: 4 },
+          { value: row.punto, style: 4 },
           { value: row.parametro, style: 4 },
           { value: row.estado, style: row.isConforme ? 5 : 6 },
           { value: row.d1, type: "n", style: 4 },
           { value: row.d2, type: "n", style: 4 },
+          { value: row.d1Bruto, type: "n", style: 4 },
+          { value: row.d2Bruto, type: "n", style: 4 },
           { value: row.fecha, style: 4 },
           { value: row.resultado, style: 4 },
           { value: row.criterio, style: 4 },
@@ -1067,8 +1141,8 @@ document.addEventListener("DOMContentLoaded", () => {
       '<sheetFormatPr defaultRowHeight="18"/>' +
       "<cols>" + colsXml + "</cols>" +
       "<sheetData>" + sheetRows.join("") + "</sheetData>" +
-      '<autoFilter ref="A3:H' + lastRow + '"/>' +
-      '<mergeCells count="2"><mergeCell ref="A1:H1"/><mergeCell ref="A2:H2"/></mergeCells>' +
+      '<autoFilter ref="A3:K' + lastRow + '"/>' +
+      '<mergeCells count="2"><mergeCell ref="A1:K1"/><mergeCell ref="A2:K2"/></mergeCells>' +
       "</worksheet>"
     );
   }
