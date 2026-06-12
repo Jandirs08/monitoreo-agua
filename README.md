@@ -1,6 +1,7 @@
 # Manual de Operacion
 
 ## 1. Uso general
+- Ingresar el `Punto` (codificacion o nombre). Campo opcional: puede dejarse vacio sin bloquear el calculo.
 - Seleccionar el parametro.
 - Ingresar `D1` y `D2`.
 - Pulsar `Calcular y Guardar`.
@@ -33,6 +34,38 @@
   `OD <= 4%`
   `Turbidez <= 10%`
 
+### Turbidez: redondeo previo segun norma
+
+En `Turbidez` el equipo entrega un dato bruto con muchos decimales (ejemplo `5.56`). La norma exige reportar el valor redondeado segun el rango en que cae la lectura. Por eso, antes de calcular el `RPD`, la app redondea automaticamente cada dato (`D1` y `D2`) y recien con esos valores redondeados aplica la formula de error.
+
+**Tabla de redondeo (por rango de lectura):**
+
+| Rango de lectura (NTU) | Redondear al multiplo de |
+|------------------------|--------------------------|
+| `0 - 1.0`              | `0.05`                   |
+| `1 - 10`               | `0.1`                    |
+| `10 - 40`              | `1`                      |
+| `40 - 100`             | `5`                      |
+| `100 - 400`            | `10`                     |
+| `400 - 1000`           | `50`                     |
+| `> 1000`               | `100`                    |
+
+**Flujo del calculo:**
+1. Se ingresa el dato bruto del equipo (ejemplo `5.56`).
+2. La app lo redondea segun su rango (`5.56` cae en `1 - 10`, multiplo `0.1`, da `5.6`).
+3. El `RPD` se calcula con los valores ya redondeados (`5.6`), nunca con los brutos.
+4. En el historial cada dato se muestra como `redondeado (bruto)`, ejemplo `5.6 (5.56)`.
+
+**Ejemplos:**
+
+| Dato bruto | Rango   | Redondeado |
+|------------|---------|------------|
+| `5.56`     | `1-10`  | `5.6`      |
+| `8.53`     | `1-10`  | `8.5`      |
+| `0.523`    | `0-1`   | `0.5`      |
+| `37.6`     | `10-40` | `38`       |
+| `88`       | `40-100`| `90`       |
+
 ## 4. Restricciones de ingreso
 - `pH`: debe ser mayor a `0`.
 - `CE`: no permite valores negativos.
@@ -54,7 +87,7 @@
 - Boton: `Descargar Excel (.xlsx)`
 - Genera un archivo Excel real `.xlsx`.
 - Contenido del archivo:
-  `N`, `Parametro`, `Estado`, `D1`, `D2`, `Fecha`, `Resultado`, `Criterio`
+  `N`, `Punto`, `Parametro`, `Estado`, `D1`, `D2`, `Fecha`, `Resultado`, `Criterio`
 
 ### Copiar historial
 - Boton: `Copiar Historial`

@@ -189,9 +189,7 @@ document.addEventListener("DOMContentLoaded", () => {
       punto: punto || null,
       d1,
       d2,
-      d1Bruto: param === "Turbidez" ? d1 : null,
       d1Redondeado: calculation.d1Rounded,
-      d2Bruto: param === "Turbidez" ? d2 : null,
       d2Redondeado: calculation.d2Rounded,
       res: calculation.conforme ? "C" : "NC",
       valor: calculation.value.toFixed(2),
@@ -377,7 +375,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function roundToNearestMultiple(value, multiple) {
     if (multiple === 0) return value;
-    return Math.round(value / multiple) * multiple;
+    const quotient = value / multiple;
+    // Redondeo "mitad hacia afuera de cero" (igual que REDOND.MULT de Excel).
+    const steps = Math.sign(quotient) * Math.round(Math.abs(quotient));
+    // Limpia error de punto flotante (ej. 56 * 0.1 = 5.6000000000000005 -> 5.6).
+    return Number((steps * multiple).toFixed(10));
   }
 
   function roundTurbidityValue(value) {
@@ -488,8 +490,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const valor = Number(safeRecord.valor);
     const param = typeof safeRecord.param === "string" && PARAM_CONFIG[safeRecord.param] ? safeRecord.param : "";
     const punto = typeof safeRecord.punto === "string" ? safeRecord.punto : (safeRecord.punto == null ? null : "");
-    const d1Bruto = safeRecord.d1Bruto != null ? Number(safeRecord.d1Bruto) : null;
-    const d2Bruto = safeRecord.d2Bruto != null ? Number(safeRecord.d2Bruto) : null;
     const d1Redondeado = safeRecord.d1Redondeado != null ? Number(safeRecord.d1Redondeado) : null;
     const d2Redondeado = safeRecord.d2Redondeado != null ? Number(safeRecord.d2Redondeado) : null;
 
@@ -503,8 +503,6 @@ document.addEventListener("DOMContentLoaded", () => {
       punto,
       d1,
       d2,
-      d1Bruto,
-      d2Bruto,
       d1Redondeado,
       d2Redondeado,
       res: safeRecord.res === "C" || safeRecord.res === "NC" ? safeRecord.res : "",
@@ -732,29 +730,33 @@ document.addEventListener("DOMContentLoaded", () => {
 
     let d1Display = record.d1;
     let d2Display = record.d2;
-    
+
     if (record.param === "Turbidez") {
-      if (record.d1Redondeado != null && record.d1Bruto != null) {
-        d1Display = record.d1Redondeado + " (" + record.d1Bruto + ")";
-      } else if (record.d1Redondeado != null) {
-        d1Display = record.d1Redondeado;
+      if (record.d1Redondeado != null) {
+        d1Display = record.d1Redondeado + ' <span class="cell-raw">(' + record.d1 + ")</span>";
       }
-      
-      if (record.d2Redondeado != null && record.d2Bruto != null) {
-        d2Display = record.d2Redondeado + " (" + record.d2Bruto + ")";
-      } else if (record.d2Redondeado != null) {
-        d2Display = record.d2Redondeado;
+
+      if (record.d2Redondeado != null) {
+        d2Display = record.d2Redondeado + ' <span class="cell-raw">(' + record.d2 + ")</span>";
       }
     }
 
+    const puntoRaw = (record.punto || "").trim();
+    const puntoCell = puntoRaw || "-";
+    // Mobile sub-line: "#N · Punto" or just "#N" when there is no punto.
+    const subline = puntoRaw
+      ? `#${index} · <span class="card-sub-punto">${puntoRaw}</span>`
+      : `#${index} <span class="card-sub-empty">· Sin punto</span>`;
+
     return `
-      <td class="cell-num" data-label="#">${index}</td>
+      <td class="cell-num" data-label="#"><span class="cell-num-val">${index}</span><span class="card-subline" aria-hidden="true">${subline}</span></td>
+      <td class="cell-punto" data-label="Punto">${puntoCell}</td>
       <td class="cell-param" data-label="Parametro" title="${record.param}">${paramLabel}</td>
       <td class="cell-estado" data-label="Estado"><span class="${badgeClass}" title="${badgeLabel}" aria-label="${badgeLabel}"><span class="badge-dot" aria-hidden="true"></span>${badgeLabel}</span></td>
-      <td class="cell-data" data-label="D1">${d1Display}</td>
-      <td class="cell-data" data-label="D2">${d2Display}</td>
+      <td class="cell-data cell-d1" data-label="D1">${d1Display}</td>
+      <td class="cell-data cell-d2" data-label="D2">${d2Display}</td>
       <td class="cell-fecha" data-label="Fecha">${record.fecha || "-"}</td>
-      <td class="cell-actions" data-label="Accion"><button type="button" class="btn-delete-row" title="Eliminar registro" aria-label="Eliminar registro ${index}">Eliminar</button></td>
+      <td class="cell-actions" data-label="Accion"><button type="button" class="btn-delete-row" title="Eliminar registro ${index}" aria-label="Eliminar registro ${index}"><svg class="btn-delete-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path d="M9 3h6l1 2h4v2H4V5h4l1-2Zm-2 6h2v8H7V9Zm4 0h2v8h-2V9Zm4 0h2v8h-2V9Z" fill="currentColor"/></svg><span class="btn-delete-label">Eliminar</span></button></td>
     `;
   }
 
@@ -816,6 +818,7 @@ document.addEventListener("DOMContentLoaded", () => {
     pageItems.forEach((record, index) => {
       const row = document.createElement("tr");
       row.setAttribute("data-id", record.id);
+      row.setAttribute("data-res", record.res === "C" ? "C" : "NC");
       row.innerHTML = buildRowMarkup(record, start + index + 1);
       fragment.appendChild(row);
     });
@@ -876,21 +879,17 @@ document.addEventListener("DOMContentLoaded", () => {
     return hist.map((record, index) => {
       let d1Display = record.d1;
       let d2Display = record.d2;
-      
+
       if (record.param === "Turbidez") {
-        if (record.d1Redondeado != null && record.d1Bruto != null) {
-          d1Display = record.d1Redondeado + " (" + record.d1Bruto + ")";
-        } else if (record.d1Redondeado != null) {
-          d1Display = record.d1Redondeado;
+        if (record.d1Redondeado != null) {
+          d1Display = record.d1Redondeado + " (" + record.d1 + ")";
         }
-        
-        if (record.d2Redondeado != null && record.d2Bruto != null) {
-          d2Display = record.d2Redondeado + " (" + record.d2Bruto + ")";
-        } else if (record.d2Redondeado != null) {
-          d2Display = record.d2Redondeado;
+
+        if (record.d2Redondeado != null) {
+          d2Display = record.d2Redondeado + " (" + record.d2 + ")";
         }
       }
-      
+
       return {
         number: index + 1,
         punto: record.punto || "-",
@@ -898,8 +897,6 @@ document.addEventListener("DOMContentLoaded", () => {
         estado: formatStatusLabel(record.res),
         d1: d1Display,
         d2: d2Display,
-        d1Bruto: record.d1Bruto != null ? record.d1Bruto : "-",
-        d2Bruto: record.d2Bruto != null ? record.d2Bruto : "-",
         fecha: record.fecha || "",
         resultado: formatExportResult(record),
         criterio: PARAM_CONFIG[record.param]?.criterionText || "",
@@ -927,7 +924,7 @@ document.addEventListener("DOMContentLoaded", () => {
       "Monitoreo QA/QC",
       "Generado: " + DISPLAY_DATE_FORMATTER.format(new Date()) + " | Total registros: " + rows.length,
       "",
-      ["N", "Punto", "Parametro", "Estado", "D1", "D2", "D1 Bruto", "D2 Bruto", "Fecha", "Resultado", "Criterio"].join("\t"),
+      ["N", "Punto", "Parametro", "Estado", "D1", "D2", "Fecha", "Resultado", "Criterio"].join("\t"),
     ];
 
     rows.forEach((row) => {
@@ -939,8 +936,6 @@ document.addEventListener("DOMContentLoaded", () => {
           row.estado,
           row.d1,
           row.d2,
-          row.d1Bruto,
-          row.d2Bruto,
           row.fecha,
           row.resultado,
           row.criterio,
@@ -1125,8 +1120,8 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function createWorksheetXml(rows, now) {
-    const headers = ["N", "Punto", "Parametro", "Estado", "D1", "D2", "D1 Bruto", "D2 Bruto", "Fecha", "Resultado", "Criterio"];
-    const widths = [6, 16, 18, 16, 12, 12, 12, 12, 24, 22, 24];
+    const headers = ["N", "Punto", "Parametro", "Estado", "D1", "D2", "Fecha", "Resultado", "Criterio"];
+    const widths = [6, 16, 18, 16, 16, 16, 24, 22, 24];
     const sheetRows = [
       buildSheetRow(1, [{ value: "Monitoreo QA/QC", style: 1 }]),
       buildSheetRow(2, [{ value: "Generado: " + DISPLAY_DATE_FORMATTER.format(now) + " | Total registros: " + rows.length, style: 2 }]),
@@ -1146,10 +1141,8 @@ document.addEventListener("DOMContentLoaded", () => {
           { value: row.punto, style: 4 },
           { value: row.parametro, style: 4 },
           { value: row.estado, style: row.isConforme ? 5 : 6 },
-          { value: row.d1, type: "n", style: 4 },
-          { value: row.d2, type: "n", style: 4 },
-          { value: row.d1Bruto, type: "n", style: 4 },
-          { value: row.d2Bruto, type: "n", style: 4 },
+          { value: row.d1, style: 4 },
+          { value: row.d2, style: 4 },
           { value: row.fecha, style: 4 },
           { value: row.resultado, style: 4 },
           { value: row.criterio, style: 4 },
@@ -1169,8 +1162,8 @@ document.addEventListener("DOMContentLoaded", () => {
       '<sheetFormatPr defaultRowHeight="18"/>' +
       "<cols>" + colsXml + "</cols>" +
       "<sheetData>" + sheetRows.join("") + "</sheetData>" +
-      '<autoFilter ref="A3:K' + lastRow + '"/>' +
-      '<mergeCells count="2"><mergeCell ref="A1:K1"/><mergeCell ref="A2:K2"/></mergeCells>' +
+      '<autoFilter ref="A3:I' + lastRow + '"/>' +
+      '<mergeCells count="2"><mergeCell ref="A1:I1"/><mergeCell ref="A2:I2"/></mergeCells>' +
       "</worksheet>"
     );
   }

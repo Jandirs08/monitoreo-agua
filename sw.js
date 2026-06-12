@@ -1,5 +1,5 @@
 // Service Worker - Monitoreo QA/QC
-const CACHE_NAME = "monitoreo-qaqc-v3";
+const CACHE_NAME = "monitoreo-qaqc-v4";
 const ASSETS = [
   "./",
   "./index.html",
